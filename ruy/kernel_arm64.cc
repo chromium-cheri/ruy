@@ -32,6 +32,33 @@ namespace ruy {
 #define RUY_ASM_LABEL_STORE_INT32 94
 #define RUY_ASM_LABEL_AFTER_STORE 99
 
+#if defined(__CHERI_PURE_CAPABILITY__)
+#define RUY_OFFSET_BIAS 0
+#define RUY_OFFSET_LHS_SUMS 16
+#define RUY_OFFSET_RHS_SUMS 32
+#define RUY_OFFSET_LHS_BASE_PTR 48
+#define RUY_OFFSET_MULTIPLIER_FIXEDPOINT 64
+#define RUY_OFFSET_MULTIPLIER_EXPONENT 80
+#define RUY_OFFSET_RHS_BASE_PTR 96 
+#define RUY_OFFSET_DST_BASE_PTR 112 
+#define RUY_OFFSET_LHS_ZERO_POINT 128
+#define RUY_OFFSET_RHS_ZERO_POINT 132
+#define RUY_OFFSET_DST_ZERO_POINT 136
+#define RUY_OFFSET_PROD_ZP_DEPTH 140
+#define RUY_OFFSET_START_ROW 144
+#define RUY_OFFSET_START_COL 148
+#define RUY_OFFSET_LAST_ROW 152
+#define RUY_OFFSET_LAST_COL 156
+#define RUY_OFFSET_DST_ROWS 160
+#define RUY_OFFSET_DST_COLS 164
+#define RUY_OFFSET_LHS_STRIDE 168
+#define RUY_OFFSET_RHS_STRIDE 172
+#define RUY_OFFSET_DST_STRIDE 176
+#define RUY_OFFSET_DEPTH 180
+#define RUY_OFFSET_CLAMP_MIN 184
+#define RUY_OFFSET_CLAMP_MAX 188
+#define RUY_OFFSET_FLAGS 192
+#else // defined(__CHERI_PURE_CAPABILITY__)
 #define RUY_OFFSET_BIAS 0
 #define RUY_OFFSET_LHS_SUMS 8
 #define RUY_OFFSET_RHS_SUMS 16
@@ -57,6 +84,7 @@ namespace ruy {
 #define RUY_OFFSET_CLAMP_MIN 120
 #define RUY_OFFSET_CLAMP_MAX 124
 #define RUY_OFFSET_FLAGS 128
+#endif // defined(__CHERI_PURE_CAPABILITY__)
 
 template <typename Params>
 void CheckOffsetsInKernelParams8bit(const Params&) {
@@ -7656,6 +7684,23 @@ void Kernel8bitNeonDotprodA55ish(const KernelParams8bit<8, 8>& params) {
 #undef RUY_OFFSET_CLAMP_MAX
 #undef RUY_OFFSET_FLAGS
 
+#if defined(__CHERI_PURE_CAPABILITY__)
+#define RUY_OFFSET_LHS_BASE_PTR 0
+#define RUY_OFFSET_RHS_BASE_PTR 16 
+#define RUY_OFFSET_DST_BASE_PTR 32
+#define RUY_OFFSET_BIAS 48 
+#define RUY_OFFSET_START_ROW 64 
+#define RUY_OFFSET_START_COL 68
+#define RUY_OFFSET_LAST_ROW 72
+#define RUY_OFFSET_LAST_COL 76
+#define RUY_OFFSET_LHS_STRIDE 88
+#define RUY_OFFSET_RHS_STRIDE 92
+#define RUY_OFFSET_DST_STRIDE 96 
+#define RUY_OFFSET_DEPTH 100
+#define RUY_OFFSET_CLAMP_MIN 104
+#define RUY_OFFSET_CLAMP_MAX 108
+#define RUY_OFFSET_FLAGS 112
+#else // defined(__CHERI_PURE_CAPABILITY__)
 #define RUY_OFFSET_LHS_BASE_PTR 0
 #define RUY_OFFSET_RHS_BASE_PTR 8
 #define RUY_OFFSET_DST_BASE_PTR 16
@@ -7671,6 +7716,7 @@ void Kernel8bitNeonDotprodA55ish(const KernelParams8bit<8, 8>& params) {
 #define RUY_OFFSET_CLAMP_MIN 72
 #define RUY_OFFSET_CLAMP_MAX 76
 #define RUY_OFFSET_FLAGS 80
+#endif // defined(__CHERI_PURE_CAPABILITY__)
 
 template <typename Params>
 void CheckOffsetsInKernelParamsFloat(const Params&) {

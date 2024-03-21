@@ -53,9 +53,14 @@ constexpr int kMaxMulParamsSize =
                                 kMaxMulParamsSizeQuantizedIntegerCase));
 
 // OK to adjust as needed, but we want to avoid unnecessarily inflating that.
+#if defined(__CHERI_PURE_CAPABILITY__)
+// Increased to account for width and stronger alignment of capabilities.
+static_assert(kMaxMulParamsSize <= 80, "");
+#else // defined(__CHERI_PURE_CAPABILITY__
 // Temporarily bumped from 32 to 48 as part of temporarily not using unions
 // in MulParams.
 static_assert(kMaxMulParamsSize <= 48, "");
+#endif // defined(__CHERI_PURE_CAPABILITY__
 
 // Type-erased data needed for implementing TrMul.
 struct TrMulParams {
