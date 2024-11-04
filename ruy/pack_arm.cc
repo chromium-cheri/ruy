@@ -192,14 +192,10 @@ void Pack8bitColMajorForNeon(const void* src_ptr0, const void* src_ptr1,
 
           // Store the sums.
 #if defined(__CHERI_PURE_CAPABILITY__)
-          // x1 is included in the list of clobbers, and as it isn't used
-	  // in the remainder of the asm block it is free to used as a
-	  // temporary register for the cmp.
-          "gcvalue x1, %[sums_ptr]\n"
-          "cmp x1, #0\n"
-#else // defined(__CHERI_PURE_CAPABILITY__)
+          "cmp %[sums_ptr], czr\n"
+#else   // !__CHERI_PURE_CAPABILITY__
           "cmp %[sums_ptr], #0\n"
-#endif // defined(__CHERI_PURE_CAPABILITY__)
+#endif  // !__CHERI_PURE_CAPABILITY__
           "beq 6f\n"
           "st1 {v28.4s}, [%[sums_ptr]], #16\n"
           "6:\n"
@@ -826,14 +822,10 @@ void Pack8bitColMajorForNeonA55ish(const void* src_ptr0, const void* src_ptr1,
 
           // Store the sums.
 #if defined(__CHERI_PURE_CAPABILITY__)
-          // x1 is included in the list of clobbers, and as it isn't used
-	  // in the remainder of the asm block it is free to used as a
-	  // temporary register for the cmp.
-          "gcvalue x1, %[sums_ptr]\n"
-          "cmp x1, #0\n"
-#else // defined(__CHERI_PURE_CAPABILITY__)
+          "cmp %[sums_ptr], czr\n"
+#else   // !__CHERI_PURE_CAPABILITY__
           "cmp %[sums_ptr], #0\n"
-#endif // defined(__CHERI_PURE_CAPABILITY__)
+#endif  // !__CHERI_PURE_CAPABILITY__
           "beq 6f\n"
           "st1 {v28.4s}, [%[sums_ptr]], #16\n"
           "6:\n"
@@ -1082,14 +1074,10 @@ void Pack8bitColMajorForNeonDotprodA55ish(
 
           // Store the sums.
 #if defined(__CHERI_PURE_CAPABILITY__)
-          // x1 is included in the list of clobbers, and as it isn't used
-	  // in the remainder of the asm block it is free to used as a
-	  // temporary register for the cmp.
-          "gcvalue x1, %[sums_ptr]\n"
-          "cmp x1, #0\n"
-#else // defined(__CHERI_PURE_CAPABILITY__)
+          "cmp %[sums_ptr], czr\n"
+#else   // !__CHERI_PURE_CAPABILITY__
           "cmp %[sums_ptr], #0\n"
-#endif // defined(__CHERI_PURE_CAPABILITY__)
+#endif  // !__CHERI_PURE_CAPABILITY__
           "beq 6f\n"
           "st1 {v28.4s}, [%[sums_ptr]], #16\n"
           "6:\n"
@@ -1587,14 +1575,10 @@ void Pack8bitColMajorForNeonDotprod(const void* src_ptr0, const void* src_ptr1,
 
           // Store the sums.
 #if defined(__CHERI_PURE_CAPABILITY__)
-          // x1 is included in the list of clobbers, and as it isn't used
-	  // in the remainder of the asm block it is free to used as a
-	  // temporary register for the cmp.
-          "gcvalue x1, %[sums_ptr]\n"
-          "cmp x1, #0\n"
-#else // defined(__CHERI_PURE_CAPABILITY__)
+          "cmp %[sums_ptr], czr\n"
+#else   // !__CHERI_PURE_CAPABILITY__
           "cmp %[sums_ptr], #0\n"
-#endif // defined(__CHERI_PURE_CAPABILITY__)
+#endif  // !__CHERI_PURE_CAPABILITY__
           "beq 6f\n"
           "st1 {v28.4s}, [%[sums_ptr]], #16\n"
           "6:\n"
