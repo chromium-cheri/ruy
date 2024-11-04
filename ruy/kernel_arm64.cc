@@ -409,7 +409,11 @@ void Kernel8bitNeon(const KernelParams8bit<4, 4>& params) {
         "add %[lhs_col_ptr], %[lhs_col_ptr], x9, lsl #2\n"
         "b 5f\n"
         "4:\n"  // Finished last row...
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov %[lhs_col_ptr], c5\n"  // Go back to first row
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov %[lhs_col_ptr], x5\n"  // Go back to first row
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Now we need to advance to the next column. If we already
         // finished the last column, then in principle we are done, however
         // we can't just return here, as we need to allow the end work of the
@@ -440,28 +444,53 @@ void Kernel8bitNeon(const KernelParams8bit<4, 4>& params) {
         // Now we load: bias data, LHS sums data, RHS sums data.
 
         // First, load the base pointers from the params.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c1, [%[params], #" RUY_STR(RUY_OFFSET_BIAS) "]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x1, [%[params], #" RUY_STR(RUY_OFFSET_BIAS) "]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Determine the channel index.
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_CHANNEL_DIMENSION_IS_COL) "\n"
         "csel w3, %w[row], %w[col], eq\n"
 
         // Offset the bias pointer as needed given the current row, col.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c5, c1, x3, lsl #2\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x5, x1, x3, lsl #2\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // If there is no bias, use no offset, just address the passed zero
         // data.
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_BIAS) "\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "csel c1, c1, c5, eq\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "csel x1, x1, x5, eq\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Load 4 bias values.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ld1 {v14.4s}, [c1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ld1 {v14.4s}, [x1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Load the multiplier_fixedpoint values.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c5, c4, x3, lsl #2\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x5, x4, x3, lsl #2\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_PERCHANNEL) "\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "csel c4, c4, c5, eq\n"
+        "ld1 {v15.4s}, [c4]\n" // multiplier_fixedpoint
+#else   // !__CHERI_PURE_CAPABILITY__
         "csel x4, x4, x5, eq\n"
         "ld1 {v15.4s}, [x4]\n" // multiplier_fixedpoint
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Now that we know what LHS and RHS data the next iteration of the
         // main loop will need to load, we start loading the first 32 bytes of
@@ -506,9 +535,15 @@ void Kernel8bitNeon(const KernelParams8bit<4, 4>& params) {
 
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_RHS_SUMS) "\n"
         "beq 401f\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c3, [%[params], #" RUY_STR(RUY_OFFSET_RHS_SUMS) "]\n"
+        "add c3, c3, %x[col], lsl #2\n"
+        "ld1 {v14.4s}, [c3]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x3, [%[params], #" RUY_STR(RUY_OFFSET_RHS_SUMS) "]\n"
         "add x3, x3, %x[col], lsl #2\n"
         "ld1 {v14.4s}, [x3]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ldr w5, [%[params], #" RUY_STR(RUY_OFFSET_LHS_ZERO_POINT) "]\n"
         "dup v10.4s, w5\n"  // create lhs_zero_point_vec
         // Subtract rhs_sums * lhs_zero_point, per
@@ -521,11 +556,20 @@ void Kernel8bitNeon(const KernelParams8bit<4, 4>& params) {
 
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_LHS_SUMS) "\n"
         "beq 402f\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c2, [%[params], #" RUY_STR(RUY_OFFSET_LHS_SUMS) "]\n"
+        "add c2, c2, %x[row], lsl #2\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x2, [%[params], #" RUY_STR(RUY_OFFSET_LHS_SUMS) "]\n"
         "add x2, x2, %x[row], lsl #2\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ldr w5, [%[params], #" RUY_STR(RUY_OFFSET_RHS_ZERO_POINT) "]\n"
         // Load 4 lhs_sums values.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ld1 {v11.4s}, [c2]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ld1 {v11.4s}, [x2]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ins v13.s[1], w5\n" // rhs_zero_point
         // Compute lhs_sums * rhs_zero_point.
         "mul v11.4s, v11.4s, v13.s[1]\n"
@@ -551,16 +595,27 @@ void Kernel8bitNeon(const KernelParams8bit<4, 4>& params) {
         // exponent component.
 
         //Load the exponent part of the multiplier.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c1, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_EXPONENT) "]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x1, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_EXPONENT) "]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Determine the channel index.
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_CHANNEL_DIMENSION_IS_COL) "\n"
         "csel w3, %w[row], %w[col], eq\n"
 
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_PERCHANNEL) "\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c5, c1, x3, lsl #2\n"
+        "csel c1, c1, c5, eq\n"
+
+        "ld1 {v14.4s}, [c1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x5, x1, x3, lsl #2\n"
         "csel x1, x1, x5, eq\n"
 
         "ld1 {v14.4s}, [x1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         "smin v11.4s, v8.4s, v14.4s\n"
         "sub v12.4s, v14.4s, v11.4s\n"
@@ -688,32 +743,84 @@ void Kernel8bitNeon(const KernelParams8bit<4, 4>& params) {
         // Test if w1==4 && w2 == 4, i.e. if all of the 4x4 block fits.
         "cmp w1, w3\n"
         "ccmp w2, w3, 0, eq\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Yes, all of the 4x4 block fits, go to fast path.
         "beq 30f\n"
         // Not all of the 4x4 block fits.
         // Store to dst_tmp_buf
         "st1 {v16.16b}, [%[dst_tmp_buf]]\n"
         // Slow loop copying from dst_tmp_buf to dst.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrb w7, [c3, w5, uxtw]\n"
+        "strb w7, [c4, w5, uxtw]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrb w7, [x3, w5, uxtw]\n"
         "strb w7, [x4, w5, uxtw]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #4\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #4\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 50b\n"
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.b}[0], [c3], #1\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.b}[1], [c3], #1\n"
+        "st1 {v16.b}[2], [c3], #1\n"
+        "st1 {v16.b}[3], [c3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.b}[4], [c3], #1\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.b}[5], [c3], #1\n"
+        "st1 {v16.b}[6], [c3], #1\n"
+        "st1 {v16.b}[7], [c3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.b}[8], [c3], #1\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.b}[9], [c3], #1\n"
+        "st1 {v16.b}[10], [c3], #1\n"
+        "st1 {v16.b}[11], [c3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.b}[12], [c3], #1\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.b}[13], [c3], #1\n"
+        "st1 {v16.b}[14], [c3], #1\n"
+        "st1 {v16.b}[15], [c3], #1\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[0], [x3], #1\n"
@@ -742,6 +849,7 @@ void Kernel8bitNeon(const KernelParams8bit<4, 4>& params) {
         "st1 {v16.b}[13], [x3], #1\n"
         "st1 {v16.b}[14], [x3], #1\n"
         "st1 {v16.b}[15], [x3], #1\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "31:\n"
 
         "add %[dst_ptr], %[dst_ptr], #4\n"
@@ -815,32 +923,84 @@ void Kernel8bitNeon(const KernelParams8bit<4, 4>& params) {
         // Test if w1==4 && w2 == 4, i.e. if all of the 4x4 block fits.
         "cmp w1, w3\n"
         "ccmp w2, w3, 0, eq\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Yes, all of the 4x4 block fits, go to fast path.
         "beq 30f\n"
         // Not all of the 4x4 block fits.
         // Store to dst_tmp_buf
         "st1 {v16.16b}, [%[dst_tmp_buf]]\n"
         // Slow loop copying from dst_tmp_buf to dst.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrb w7, [c3, w5, uxtw]\n"
+        "strb w7, [c4, w5, uxtw]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrb w7, [x3, w5, uxtw]\n"
         "strb w7, [x4, w5, uxtw]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #4\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #4\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 50b\n"
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.b}[0], [c3], #1\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.b}[1], [c3], #1\n"
+        "st1 {v16.b}[2], [c3], #1\n"
+        "st1 {v16.b}[3], [c3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.b}[4], [c3], #1\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.b}[5], [c3], #1\n"
+        "st1 {v16.b}[6], [c3], #1\n"
+        "st1 {v16.b}[7], [c3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.b}[8], [c3], #1\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.b}[9], [c3], #1\n"
+        "st1 {v16.b}[10], [c3], #1\n"
+        "st1 {v16.b}[11], [c3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.b}[12], [c3], #1\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.b}[13], [c3], #1\n"
+        "st1 {v16.b}[14], [c3], #1\n"
+        "st1 {v16.b}[15], [c3], #1\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[0], [x3], #1\n"
@@ -869,6 +1029,7 @@ void Kernel8bitNeon(const KernelParams8bit<4, 4>& params) {
         "st1 {v16.b}[13], [x3], #1\n"
         "st1 {v16.b}[14], [x3], #1\n"
         "st1 {v16.b}[15], [x3], #1\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "31:\n"
 
         "add %[dst_ptr], %[dst_ptr], #4\n"
@@ -942,7 +1103,11 @@ void Kernel8bitNeon(const KernelParams8bit<4, 4>& params) {
        // Test if w1==4 && w2 == 4, i.e. if all of the 8x8 block fits.
         "cmp w1, w3\n"
         "ccmp w2, w3, 0, eq\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Yes, all of the 4x4 block fits, go to fast path.
         "beq 30f\n"
         // Not all of the 4x4 block fits.
@@ -950,25 +1115,73 @@ void Kernel8bitNeon(const KernelParams8bit<4, 4>& params) {
         "str q16, [%[dst_tmp_buf], #0]\n"
         "str q17, [%[dst_tmp_buf], #16]\n"
         // Slow loop copying from dst_tmp_buf to dst.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrh w7, [c3, x5, lsl #1]\n"
+        "strh w7, [c4, x5, lsl #1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrh w7, [x3, x5, lsl #1]\n"
         "strh w7, [x4, x5, lsl #1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #8\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #8\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 50b\n"
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.h}[0], [c3], #2\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.h}[1], [c3], #2\n"
+        "st1 {v16.h}[2], [c3], #2\n"
+        "st1 {v16.h}[3], [c3], #2\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.h}[4], [c3], #2\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.h}[5], [c3], #2\n"
+        "st1 {v16.h}[6], [c3], #2\n"
+        "st1 {v16.h}[7], [c3], #2\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v17.h}[0], [c3], #2\n"
+        "add c4, c4, x11\n"
+        "st1 {v17.h}[1], [c3], #2\n"
+        "st1 {v17.h}[2], [c3], #2\n"
+        "st1 {v17.h}[3], [c3], #2\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v17.h}[4], [c3], #2\n"
+        "add c4, c4, x11\n"
+        "st1 {v17.h}[5], [c3], #2\n"
+        "st1 {v17.h}[6], [c3], #2\n"
+        "st1 {v17.h}[7], [c3], #2\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.h}[0], [x3], #2\n"
@@ -997,6 +1210,7 @@ void Kernel8bitNeon(const KernelParams8bit<4, 4>& params) {
         "st1 {v17.h}[5], [x3], #2\n"
         "st1 {v17.h}[6], [x3], #2\n"
         "st1 {v17.h}[7], [x3], #2\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "31:\n"
 
         "add %[dst_ptr], %[dst_ptr], #8\n"
@@ -1045,7 +1259,11 @@ void Kernel8bitNeon(const KernelParams8bit<4, 4>& params) {
         // Test if w1==4 && w2 == 4, i.e. if all of the 8x8 block fits.
         "cmp w1, w3\n"
         "ccmp w2, w3, 0, eq\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Yes, all of the 4x4 block fits, go to fast path.
         "beq 30f\n"
         // Not all of the 4x4 block fits.
@@ -1055,25 +1273,73 @@ void Kernel8bitNeon(const KernelParams8bit<4, 4>& params) {
         "str q18, [%[dst_tmp_buf], #32]\n"
         "str q19, [%[dst_tmp_buf], #48]\n"
         // Slow loop copying from dst_tmp_buf to dst.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr w7, [c3, x5, lsl #2]\n"
+        "str w7, [c4, x5, lsl #2]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr w7, [x3, x5, lsl #2]\n"
         "str w7, [x4, x5, lsl #2]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
         "add x3, x3, #16\n"
         "add x4, x4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
+        "add x3, x3, #16\n"
+        "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 50b\n"
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.s}[0], [c3], #4\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.s}[1], [c3], #4\n"
+        "st1 {v16.s}[2], [c3], #4\n"
+        "st1 {v16.s}[3], [c3], #4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v17.s}[0], [c3], #4\n"
+        "add c4, c4, x11\n"
+        "st1 {v17.s}[1], [c3], #4\n"
+        "st1 {v17.s}[2], [c3], #4\n"
+        "st1 {v17.s}[3], [c3], #4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v18.s}[0], [c3], #4\n"
+        "add c4, c4, x11\n"
+        "st1 {v18.s}[1], [c3], #4\n"
+        "st1 {v18.s}[2], [c3], #4\n"
+        "st1 {v18.s}[3], [c3], #4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v19.s}[0], [c3], #4\n"
+        "add c4, c4, x11\n"
+        "st1 {v19.s}[1], [c3], #4\n"
+        "st1 {v19.s}[2], [c3], #4\n"
+        "st1 {v19.s}[3], [c3], #4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.s}[0], [x3], #4\n"
@@ -1102,6 +1368,7 @@ void Kernel8bitNeon(const KernelParams8bit<4, 4>& params) {
         "st1 {v19.s}[1], [x3], #4\n"
         "st1 {v19.s}[2], [x3], #4\n"
         "st1 {v19.s}[3], [x3], #4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "31:\n"
 
         "add %[dst_ptr], %[dst_ptr], #16\n"
@@ -1357,7 +1624,11 @@ void Kernel8bitNeon1Col(const KernelParams8bit<4, 4>& params) {
         "add %[lhs_col_ptr], %[lhs_col_ptr], x9, lsl #2\n"
         "b 5f\n"
         "4:\n"  // Finished last row...
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov %[lhs_col_ptr], c5\n"  // Go back to first row
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov %[lhs_col_ptr], x5\n"  // Go back to first row
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Now we need to advance to the next column. If we already
         // finished the last column, then in principle we are done, however
         // we can't just return here, as we need to allow the end work of the
@@ -1385,15 +1656,37 @@ void Kernel8bitNeon1Col(const KernelParams8bit<4, 4>& params) {
         "ldr x4, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_FIXEDPOINT) "]\n"
         "ldrb w6, [%[params], #" RUY_STR(RUY_OFFSET_FLAGS) "]\n"
         "dup v9.4s, w3\n"   // create prod_zp_depth_vec
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c5, c4, %x[row], lsl #2\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x5, x4, %x[row], lsl #2\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_PERCHANNEL) "\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "csel c4, c4, c5, eq\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "csel x4, x4, x5, eq\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ld1 {v15.4s}, [c4]\n" // multiplier_fixedpoint
+#else   // !__CHERI_PURE_CAPABILITY__
         "ld1 {v15.4s}, [x4]\n" // multiplier_fixedpoint
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Now we load: bias data, LHS sums data, RHS sums data.
 
         // First, load the base pointers from the params.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c1, [%[params], #" RUY_STR(RUY_OFFSET_BIAS) "]\n"
+
+        "add c5, c1, %x[row], lsl #2\n"
+        "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_BIAS) "\n"
+        "csel c1, c1, c5, eq\n"
+
+        // Load 4 bias values.
+        "ld1 {v14.4s}, [c1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x1, [%[params], #" RUY_STR(RUY_OFFSET_BIAS) "]\n"
 
         "add x5, x1, %x[row], lsl #2\n"
@@ -1402,6 +1695,7 @@ void Kernel8bitNeon1Col(const KernelParams8bit<4, 4>& params) {
 
         // Load 4 bias values.
         "ld1 {v14.4s}, [x1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Now that we know what LHS and RHS data the next iteration of the
         // main loop will need to load, we start loading the first 32 bytes of
@@ -1425,9 +1719,15 @@ void Kernel8bitNeon1Col(const KernelParams8bit<4, 4>& params) {
 
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_RHS_SUMS) "\n"
         "beq 401f\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c3, [%[params], #" RUY_STR(RUY_OFFSET_RHS_SUMS) "]\n"
+        "add c3, c3, %x[col], lsl #2\n"
+        "ld1 {v14.4s}, [c3]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x3, [%[params], #" RUY_STR(RUY_OFFSET_RHS_SUMS) "]\n"
         "add x3, x3, %x[col], lsl #2\n"
         "ld1 {v14.4s}, [x3]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ldr w5, [%[params], #" RUY_STR(RUY_OFFSET_LHS_ZERO_POINT) "]\n"
         "dup v10.4s, w5\n"  // create lhs_zero_point_vec
         // Subtract rhs_sums * lhs_zero_point, per
@@ -1437,11 +1737,19 @@ void Kernel8bitNeon1Col(const KernelParams8bit<4, 4>& params) {
 
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_LHS_SUMS) "\n"
         "beq 402f\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c2, [%[params], #" RUY_STR(RUY_OFFSET_LHS_SUMS) "]\n"
+        "add c2, c2, %x[row], lsl #2\n"
+        "ldr w5, [%[params], #" RUY_STR(RUY_OFFSET_RHS_ZERO_POINT) "]\n"
+        // Load 4 lhs_sums values.
+        "ld1 {v11.4s}, [c2]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x2, [%[params], #" RUY_STR(RUY_OFFSET_LHS_SUMS) "]\n"
         "add x2, x2, %x[row], lsl #2\n"
         "ldr w5, [%[params], #" RUY_STR(RUY_OFFSET_RHS_ZERO_POINT) "]\n"
         // Load 4 lhs_sums values.
         "ld1 {v11.4s}, [x2]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ins v13.s[1], w5\n" // rhs_zero_point
         // Compute lhs_sums * rhs_zero_point.
         "mul v11.4s, v11.4s, v13.s[1]\n"
@@ -1464,12 +1772,23 @@ void Kernel8bitNeon1Col(const KernelParams8bit<4, 4>& params) {
         // exponent component.
 
         //Load the exponent part of the multiplier.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c1, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_EXPONENT) "]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x1, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_EXPONENT) "]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_PERCHANNEL) "\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c5, c1, %x[row], lsl #2\n"
+        "csel c1, c1, c5, eq\n"
+
+        "ld1 {v14.4s}, [c1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x5, x1, %x[row], lsl #2\n"
         "csel x1, x1, x5, eq\n"
 
         "ld1 {v14.4s}, [x1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         "smin v11.4s, v8.4s, v14.4s\n"
         "sub v12.4s, v14.4s, v11.4s\n"
@@ -1533,33 +1852,59 @@ void Kernel8bitNeon1Col(const KernelParams8bit<4, 4>& params) {
         // Test if w1==4, i.e. if all of the 4x1 block fits.
         "cmp w1, w3\n"
 
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Yes, all of the 4x1 block fits, go to fast path.
         "beq 30f\n"
         // Not all of the 4x1 block fits.
         // Store to dst_tmp_buf
         "st1 {v16.16b}, [%[dst_tmp_buf]]\n"
         // Slow loop copying from dst_tmp_buf to dst.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrb w7, [c3, w5, uxtw]\n"
+        "strb w7, [c4, w5, uxtw]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrb w7, [x3, w5, uxtw]\n"
         "strb w7, [x4, w5, uxtw]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x1 block fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.b}[0], [c3], #1\n"
+        "st1 {v16.b}[1], [c3], #1\n"
+        "st1 {v16.b}[2], [c3], #1\n"
+        "st1 {v16.b}[3], [c3], #1\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[0], [x3], #1\n"
         "st1 {v16.b}[1], [x3], #1\n"
         "st1 {v16.b}[2], [x3], #1\n"
         "st1 {v16.b}[3], [x3], #1\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "31:\n"
 
         "add %[dst_ptr], %[dst_ptr], #4\n"
@@ -1616,33 +1961,59 @@ void Kernel8bitNeon1Col(const KernelParams8bit<4, 4>& params) {
         // Test if w1==4, i.e. if all of the 4x1 block fits.
         "cmp w1, w3\n"
         "ccmp w2, w3, 0, eq\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Yes, all of the 4x1 block fits, go to fast path.
         "beq 30f\n"
         // Not all of the 4x4 block fits.
         // Store to dst_tmp_buf
         "st1 {v16.16b}, [%[dst_tmp_buf]]\n"
         // Slow loop copying from dst_tmp_buf to dst.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrb w7, [c3, w5, uxtw]\n"
+        "strb w7, [c4, w5, uxtw]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrb w7, [x3, w5, uxtw]\n"
         "strb w7, [x4, w5, uxtw]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.b}[0], [c3], #1\n"
+        "st1 {v16.b}[1], [c3], #1\n"
+        "st1 {v16.b}[2], [c3], #1\n"
+        "st1 {v16.b}[3], [c3], #1\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[0], [x3], #1\n"
         "st1 {v16.b}[1], [x3], #1\n"
         "st1 {v16.b}[2], [x3], #1\n"
         "st1 {v16.b}[3], [x3], #1\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "31:\n"
 
         "add %[dst_ptr], %[dst_ptr], #4\n"
@@ -1694,21 +2065,38 @@ void Kernel8bitNeon1Col(const KernelParams8bit<4, 4>& params) {
 
        // Test if w1==4 && w2 == 4, i.e. if all of the 8x8 block fits.
         "cmp w1, w3\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Yes, all of the 4x4 block fits, go to fast path.
         "beq 30f\n"
         // Not all of the 4x4 block fits.
         // Store to dst_tmp_buf
         "str q16, [%[dst_tmp_buf], #0]\n"
         // Slow loop copying from dst_tmp_buf to dst.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrh w7, [c3, x5, lsl #1]\n"
+        "strh w7, [c4, x5, lsl #1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrh w7, [x3, x5, lsl #1]\n"
         "strh w7, [x4, x5, lsl #1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
@@ -1716,12 +2104,21 @@ void Kernel8bitNeon1Col(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.h}[0], [c3], #2\n"
+        "st1 {v16.h}[1], [c3], #2\n"
+        "st1 {v16.h}[2], [c3], #2\n"
+        "st1 {v16.h}[3], [c3], #2\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.h}[0], [x3], #2\n"
         "st1 {v16.h}[1], [x3], #2\n"
         "st1 {v16.h}[2], [x3], #2\n"
         "st1 {v16.h}[3], [x3], #2\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "31:\n"
 
         "add %[dst_ptr], %[dst_ptr], #8\n"
@@ -1752,33 +2149,59 @@ void Kernel8bitNeon1Col(const KernelParams8bit<4, 4>& params) {
         // Test if w1==4 i.e. if all of the 4x1 block fits.
         "cmp w1, w3\n"
         "ccmp w2, w3, 0, eq\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Yes, all of the 4x1 block fits, go to fast path.
         "beq 30f\n"
         // Not all of the 4x4 block fits.
         // Store to dst_tmp_buf
         "str q16, [%[dst_tmp_buf], #0]\n"
         // Slow loop copying from dst_tmp_buf to dst.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr w7, [c3, x5, lsl #2]\n"
+        "str w7, [c4, x5, lsl #2]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr w7, [x3, x5, lsl #2]\n"
         "str w7, [x4, x5, lsl #2]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.s}[0], [c3], #4\n"
+        "st1 {v16.s}[1], [c3], #4\n"
+        "st1 {v16.s}[2], [c3], #4\n"
+        "st1 {v16.s}[3], [c3], #4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.s}[0], [x3], #4\n"
         "st1 {v16.s}[1], [x3], #4\n"
         "st1 {v16.s}[2], [x3], #4\n"
         "st1 {v16.s}[3], [x3], #4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "31:\n"
 
         "add %[dst_ptr], %[dst_ptr], #16\n"
@@ -2156,7 +2579,11 @@ void Kernel8bitNeonA55ish(const KernelParams8bit<4, 4>& params) {
         "add %[lhs_col_ptr], %[lhs_col_ptr], x9, lsl #2\n"
         "b 5f\n"
         "4:\n"  // Finished last row...
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov %[lhs_col_ptr], c5\n"  // Go back to first row
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov %[lhs_col_ptr], x5\n"  // Go back to first row
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Now we need to advance to the next column. If we already
         // finished the last column, then in principle we are done, however
         // we can't just return here, as we need to allow the end work of the
@@ -2184,28 +2611,51 @@ void Kernel8bitNeonA55ish(const KernelParams8bit<4, 4>& params) {
         "ldrb w6, [%[params], #" RUY_STR(RUY_OFFSET_FLAGS) "]\n"
         "dup v9.4s, w3\n"   // create prod_zp_depth_vec
 
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c1, [%[params], #" RUY_STR(RUY_OFFSET_BIAS) "]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x1, [%[params], #" RUY_STR(RUY_OFFSET_BIAS) "]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Determine the channel index.
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_CHANNEL_DIMENSION_IS_COL) "\n"
         "csel w3, %w[row], %w[col], eq\n"
 
         // Offset the bias pointer as needed given the current row, col.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c5, c1, x3, lsl #2\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x5, x1, x3, lsl #2\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // If there is no bias, use no offset, just address the passed zero
         // data.
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_BIAS) "\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "csel c1, c1, c5, eq\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "csel x1, x1, x5, eq\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Load 4 bias values.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ld1 {v14.4s}, [c1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ld1 {v14.4s}, [x1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Load the multiplier_fixedpoint values.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c5, c4, x3, lsl #2\n"
+        "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_PERCHANNEL) "\n"
+        "csel c4, c4, c5, eq\n"
+        "ld1 {v15.4s}, [c4]\n" // multiplier_fixedpoint
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x5, x4, x3, lsl #2\n"
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_PERCHANNEL) "\n"
         "csel x4, x4, x5, eq\n"
         "ld1 {v15.4s}, [x4]\n" // multiplier_fixedpoint
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Now that we know what LHS and RHS data the next iteration of the
         // main loop will need to load, we start loading the first 32 bytes of
@@ -2260,8 +2710,13 @@ void Kernel8bitNeonA55ish(const KernelParams8bit<4, 4>& params) {
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_RHS_SUMS) "\n"
         "beq 401f\n"
         "ldr x3, [%[params], #" RUY_STR(RUY_OFFSET_RHS_SUMS) "]\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, %x[col], lsl #2\n"
+        "ld1 {v14.4s}, [c3]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, %x[col], lsl #2\n"
         "ld1 {v14.4s}, [x3]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ldr w5, [%[params], #" RUY_STR(RUY_OFFSET_LHS_ZERO_POINT) "]\n"
         "dup v10.4s, w5\n"  // create lhs_zero_point_vec
         // Subtract rhs_sums * lhs_zero_point, per
@@ -2274,11 +2729,20 @@ void Kernel8bitNeonA55ish(const KernelParams8bit<4, 4>& params) {
 
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_LHS_SUMS) "\n"
         "beq 402f\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c2, [%[params], #" RUY_STR(RUY_OFFSET_LHS_SUMS) "]\n"
+        "add c2, c2, %x[row], lsl #2\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x2, [%[params], #" RUY_STR(RUY_OFFSET_LHS_SUMS) "]\n"
         "add x2, x2, %x[row], lsl #2\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ldr w5, [%[params], #" RUY_STR(RUY_OFFSET_RHS_ZERO_POINT) "]\n"
         // Load 4 lhs_sums values.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ld1 {v11.4s}, [c2]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ld1 {v11.4s}, [x2]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ins v13.s[1], w5\n" // rhs_zero_point
         // Compute lhs_sums * rhs_zero_point.
         "mul v11.4s, v11.4s, v13.s[1]\n"
@@ -2307,12 +2771,23 @@ void Kernel8bitNeonA55ish(const KernelParams8bit<4, 4>& params) {
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_CHANNEL_DIMENSION_IS_COL) "\n"
         "csel w3, %w[row], %w[col], eq\n"
 
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c1, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_EXPONENT) "]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x1, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_EXPONENT) "]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_PERCHANNEL) "\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c5, c1, x3, lsl #2\n"
+        "csel c1, c1, c5, eq\n"
+
+        "ld1 {v14.4s}, [c1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x5, x1, x3, lsl #2\n"
         "csel x1, x1, x5, eq\n"
 
         "ld1 {v14.4s}, [x1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         "smin v11.4s, v8.4s, v14.4s\n"
         "ldr x1, [%[lhs_ptr], #8]\n"
@@ -2472,32 +2947,84 @@ void Kernel8bitNeonA55ish(const KernelParams8bit<4, 4>& params) {
        // Test if w1==4 && w2 == 4, i.e. if all of the 8x8 block fits.
         "cmp w1, w3\n"
         "ccmp w2, w3, 0, eq\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Yes, all of the 4x4 block fits, go to fast path.
         "beq 30f\n"
         // Not all of the 4x4 block fits.
         // Store to dst_tmp_buf
         "st1 {v16.16b}, [%[dst_tmp_buf]]\n"
         // Slow loop copying from dst_tmp_buf to dst.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrb w7, [c3, w5, uxtw]\n"
+        "strb w7, [c4, w5, uxtw]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrb w7, [x3, w5, uxtw]\n"
         "strb w7, [x4, w5, uxtw]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
         "add x3, x3, #4\n"
         "add x4, x4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
+        "add x3, x3, #4\n"
+        "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 50b\n"
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.b}[0], [c3], #1\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.b}[1], [c3], #1\n"
+        "st1 {v16.b}[2], [c3], #1\n"
+        "st1 {v16.b}[3], [c3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.b}[4], [c3], #1\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.b}[5], [c3], #1\n"
+        "st1 {v16.b}[6], [c3], #1\n"
+        "st1 {v16.b}[7], [c3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.b}[8], [c3], #1\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.b}[9], [c3], #1\n"
+        "st1 {v16.b}[10], [c3], #1\n"
+        "st1 {v16.b}[11], [c3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.b}[12], [c3], #1\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.b}[13], [c3], #1\n"
+        "st1 {v16.b}[14], [c3], #1\n"
+        "st1 {v16.b}[15], [c3], #1\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[0], [x3], #1\n"
@@ -2526,6 +3053,7 @@ void Kernel8bitNeonA55ish(const KernelParams8bit<4, 4>& params) {
         "st1 {v16.b}[13], [x3], #1\n"
         "st1 {v16.b}[14], [x3], #1\n"
         "st1 {v16.b}[15], [x3], #1\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "31:\n"
 
         "add %[dst_ptr], %[dst_ptr], #4\n"
@@ -2604,32 +3132,84 @@ void Kernel8bitNeonA55ish(const KernelParams8bit<4, 4>& params) {
        // Test if w1==4 && w2 == 4, i.e. if all of the 8x8 block fits.
         "cmp w1, w3\n"
         "ccmp w2, w3, 0, eq\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Yes, all of the 4x4 block fits, go to fast path.
         "beq 30f\n"
         // Not all of the 4x4 block fits.
         // Store to dst_tmp_buf
         "st1 {v16.16b}, [%[dst_tmp_buf]]\n"
         // Slow loop copying from dst_tmp_buf to dst.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrb w7, [c3, w5, uxtw]\n"
+        "strb w7, [c4, w5, uxtw]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrb w7, [x3, w5, uxtw]\n"
         "strb w7, [x4, w5, uxtw]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #4\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #4\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 50b\n"
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.b}[0], [c3], #1\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.b}[1], [c3], #1\n"
+        "st1 {v16.b}[2], [c3], #1\n"
+        "st1 {v16.b}[3], [c3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.b}[4], [c3], #1\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.b}[5], [c3], #1\n"
+        "st1 {v16.b}[6], [c3], #1\n"
+        "st1 {v16.b}[7], [c3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.b}[8], [c3], #1\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.b}[9], [c3], #1\n"
+        "st1 {v16.b}[10], [c3], #1\n"
+        "st1 {v16.b}[11], [c3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.b}[12], [c3], #1\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.b}[13], [c3], #1\n"
+        "st1 {v16.b}[14], [c3], #1\n"
+        "st1 {v16.b}[15], [c3], #1\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[0], [x3], #1\n"
@@ -2658,6 +3238,7 @@ void Kernel8bitNeonA55ish(const KernelParams8bit<4, 4>& params) {
         "st1 {v16.b}[13], [x3], #1\n"
         "st1 {v16.b}[14], [x3], #1\n"
         "st1 {v16.b}[15], [x3], #1\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "31:\n"
 
         "add %[dst_ptr], %[dst_ptr], #4\n"
@@ -2739,7 +3320,11 @@ void Kernel8bitNeonA55ish(const KernelParams8bit<4, 4>& params) {
        // Test if w1==4 && w2 == 4, i.e. if all of the 4x4 block fits.
         "cmp w1, w3\n"
         "ccmp w2, w3, 0, eq\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Yes, all of the 4x4 block fits, go to fast path.
         "beq 30f\n"
         // Not all of the 4x4 block fits.
@@ -2747,25 +3332,73 @@ void Kernel8bitNeonA55ish(const KernelParams8bit<4, 4>& params) {
         "str q16, [%[dst_tmp_buf], #0]\n"
         "str q17, [%[dst_tmp_buf], #16]\n"
         // Slow loop copying from dst_tmp_buf to dst.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrh w7, [c3, x5, lsl #1]\n"
+        "strh w7, [c4, x5, lsl #1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrh w7, [x3, x5, lsl #1]\n"
         "strh w7, [x4, x5, lsl #1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #8\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #8\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 50b\n"
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.h}[0], [c3], #2\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.h}[1], [c3], #2\n"
+        "st1 {v16.h}[2], [c3], #2\n"
+        "st1 {v16.h}[3], [c3], #2\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.h}[4], [c3], #2\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.h}[5], [c3], #2\n"
+        "st1 {v16.h}[6], [c3], #2\n"
+        "st1 {v16.h}[7], [c3], #2\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v17.h}[0], [c3], #2\n"
+        "add c4, c4, x11\n"
+        "st1 {v17.h}[1], [c3], #2\n"
+        "st1 {v17.h}[2], [c3], #2\n"
+        "st1 {v17.h}[3], [c3], #2\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v17.h}[4], [c3], #2\n"
+        "add c4, c4, x11\n"
+        "st1 {v17.h}[5], [c3], #2\n"
+        "st1 {v17.h}[6], [c3], #2\n"
+        "st1 {v17.h}[7], [c3], #2\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.h}[0], [x3], #2\n"
@@ -2794,6 +3427,7 @@ void Kernel8bitNeonA55ish(const KernelParams8bit<4, 4>& params) {
         "st1 {v17.h}[5], [x3], #2\n"
         "st1 {v17.h}[6], [x3], #2\n"
         "st1 {v17.h}[7], [x3], #2\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "31:\n"
 
         "add %[dst_ptr], %[dst_ptr], #8\n"
@@ -2864,7 +3498,11 @@ void Kernel8bitNeonA55ish(const KernelParams8bit<4, 4>& params) {
         // Test if w1==4 && w2 == 4, i.e. if all of the 8x8 block fits.
         "cmp w1, w3\n"
         "ccmp w2, w3, 0, eq\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Yes, all of the 4x4 block fits, go to fast path.
         "beq 30f\n"
         // Not all of the 4x4 block fits.
@@ -2874,25 +3512,73 @@ void Kernel8bitNeonA55ish(const KernelParams8bit<4, 4>& params) {
         "str q18, [%[dst_tmp_buf], #32]\n"
         "str q19, [%[dst_tmp_buf], #48]\n"
         // Slow loop copying from dst_tmp_buf to dst.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr w7, [c3, x5, lsl #2]\n"
+        "str w7, [c4, x5, lsl #2]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr w7, [x3, x5, lsl #2]\n"
         "str w7, [x4, x5, lsl #2]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #16\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #16\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 50b\n"
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.s}[0], [c3], #4\n"
+        "add c4, c4, x11\n"
+        "st1 {v16.s}[1], [c3], #4\n"
+        "st1 {v16.s}[2], [c3], #4\n"
+        "st1 {v16.s}[3], [c3], #4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v17.s}[0], [c3], #4\n"
+        "add c4, c4, x11\n"
+        "st1 {v17.s}[1], [c3], #4\n"
+        "st1 {v17.s}[2], [c3], #4\n"
+        "st1 {v17.s}[3], [c3], #4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v18.s}[0], [c3], #4\n"
+        "add c4, c4, x11\n"
+        "st1 {v18.s}[1], [c3], #4\n"
+        "st1 {v18.s}[2], [c3], #4\n"
+        "st1 {v18.s}[3], [c3], #4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v19.s}[0], [c3], #4\n"
+        "add c4, c4, x11\n"
+        "st1 {v19.s}[1], [c3], #4\n"
+        "st1 {v19.s}[2], [c3], #4\n"
+        "st1 {v19.s}[3], [c3], #4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.s}[0], [x3], #4\n"
@@ -2921,6 +3607,7 @@ void Kernel8bitNeonA55ish(const KernelParams8bit<4, 4>& params) {
         "st1 {v19.s}[1], [x3], #4\n"
         "st1 {v19.s}[2], [x3], #4\n"
         "st1 {v19.s}[3], [x3], #4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "31:\n"
 
         "add %[dst_ptr], %[dst_ptr], #16\n"
@@ -3362,7 +4049,11 @@ void Kernel8bitNeonDotprod(const KernelParams8bit<8, 8>& params) {
         "add %[lhs_col_ptr], %[lhs_col_ptr], x9, lsl #3\n"
         "b 5f\n"
         "4:\n"  // Finished last row...
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov %[lhs_col_ptr], c5\n"  // Go back to first row
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov %[lhs_col_ptr], x5\n"  // Go back to first row
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Now we need to advance to the next column. If we already
         // finished the last column, then in principle we are done, however
         // we can't just return here, as we need to allow the end work of the
@@ -3387,22 +4078,39 @@ void Kernel8bitNeonDotprod(const KernelParams8bit<8, 8>& params) {
         "ldrb w6, [%[params], #" RUY_STR(RUY_OFFSET_FLAGS) "]\n"
         "dup v9.4s, w3\n"   // create prod_zp_depth_vec
 
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c1, [%[params], #" RUY_STR(RUY_OFFSET_BIAS) "]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x1, [%[params], #" RUY_STR(RUY_OFFSET_BIAS) "]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Determine the channel index.
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_CHANNEL_DIMENSION_IS_COL) "\n"
         "csel w3, %w[row], %w[col], eq\n"
 
         // Offset the bias pointer as needed given the current row, col.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c5, c1, x3, lsl #2\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x5, x1, x3, lsl #2\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // If there is no bias, use no offset, just address the passed zero
         // data.
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_BIAS) "\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "csel c1, c1, c5, eq\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "csel x1, x1, x5, eq\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Load 8 bias values.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ld1 {v14.4s}, [c1], #16\n"
+        "ld1 {v15.4s}, [c1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ld1 {v14.4s}, [x1], #16\n"
         "ld1 {v15.4s}, [x1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Now that we know what LHS and RHS data the next iteration of the
         // main loop will need to load, we start loading the first 32 bytes of
@@ -3472,10 +4180,17 @@ void Kernel8bitNeonDotprod(const KernelParams8bit<8, 8>& params) {
 
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_RHS_SUMS) "\n"
         "beq 401f\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c3, [%[params], #" RUY_STR(RUY_OFFSET_RHS_SUMS) "]\n"
+        "add c3, c3, %x[col], lsl #2\n"
+        "ld1 {v14.4s}, [c3], #16\n"
+        "ld1 {v15.4s}, [c3]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x3, [%[params], #" RUY_STR(RUY_OFFSET_RHS_SUMS) "]\n"
         "add x3, x3, %x[col], lsl #2\n"
         "ld1 {v14.4s}, [x3], #16\n"
         "ld1 {v15.4s}, [x3]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ldr w5, [%[params], #" RUY_STR(RUY_OFFSET_LHS_ZERO_POINT) "]\n"
         "dup v10.4s, w5\n"  // create lhs_zero_point_vec
         // Subtract rhs_sums * lhs_zero_point, per
@@ -3500,12 +4215,22 @@ void Kernel8bitNeonDotprod(const KernelParams8bit<8, 8>& params) {
 
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_LHS_SUMS) "\n"
         "beq 402f\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c2, [%[params], #" RUY_STR(RUY_OFFSET_LHS_SUMS) "]\n"
+        "add c2, c2, %x[row], lsl #2\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x2, [%[params], #" RUY_STR(RUY_OFFSET_LHS_SUMS) "]\n"
         "add x2, x2, %x[row], lsl #2\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ldr w5, [%[params], #" RUY_STR(RUY_OFFSET_RHS_ZERO_POINT) "]\n"
         // Load 4 lhs_sums values.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ld1 {v11.4s}, [c2], #16\n"
+        "ld1 {v12.4s}, [c2]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ld1 {v11.4s}, [x2], #16\n"
         "ld1 {v12.4s}, [x2]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ins v13.s[1], w5\n" // rhs_zero_point
         // Compute lhs_sums * rhs_zero_point.
         "mul v11.4s, v11.4s, v13.s[1]\n"
@@ -3542,17 +4267,29 @@ void Kernel8bitNeonDotprod(const KernelParams8bit<8, 8>& params) {
         // exponent component.
 
         //Load the exponent part of the multiplier.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c1, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_EXPONENT) "]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x1, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_EXPONENT) "]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Determine the channel index.
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_CHANNEL_DIMENSION_IS_COL) "\n"
         "csel w3, %w[row], %w[col], eq\n"
         // Compute the multiplier_exponent pointer
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_PERCHANNEL) "\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c5, c1, x3, lsl #2\n"
+        "csel c1, c1, c5, eq\n"
+        // Load multiplier_exponent
+        "ldr q9, [c1]\n"
+        "ldr q10, [c1, #16]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x5, x1, x3, lsl #2\n"
         "csel x1, x1, x5, eq\n"
         // Load multiplier_exponent
         "ldr q9, [x1]\n"
         "ldr q10, [x1, #16]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Separate positive and negative exponents
         "smin v11.4s, v8.4s, v9.4s\n"
         "smin v12.4s, v8.4s, v10.4s\n"
@@ -3560,12 +4297,21 @@ void Kernel8bitNeonDotprod(const KernelParams8bit<8, 8>& params) {
         "sub v10.4s, v10.4s, v12.4s\n"
 
         // Compute the multiplier_fixedpoint pointer
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c4, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_FIXEDPOINT) "]\n"
+        "add c5, c4, x3, lsl #2\n"
+        "csel c4, c4, c5, eq\n"
+        // Load multiplier_fixedpoint
+        "ldr q14, [c4]\n"
+        "ldr q15, [c4, #16]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x4, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_FIXEDPOINT) "]\n"
         "add x5, x4, x3, lsl #2\n"
         "csel x4, x4, x5, eq\n"
         // Load multiplier_fixedpoint
         "ldr q14, [x4]\n"
         "ldr q15, [x4, #16]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Jump based on channel dimension.
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_CHANNEL_DIMENSION_IS_COL) "\n"
@@ -3812,41 +4558,89 @@ void Kernel8bitNeonDotprod(const KernelParams8bit<8, 8>& params) {
         "beq 30f\n"
         // Not all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, #8\n"
         "b 31f\n"
         "30:\n"
         // Yes, all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write directly to destination matrix.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, x11\n"
         "31:\n"
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v16.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v20.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v20)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v17.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v17)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v21.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v21)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v18.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v18)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v22.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v22)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v19.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v19)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v23.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v23)
 
         // For the next block: perform the first few multiply-adds on the data
@@ -3862,21 +4656,40 @@ void Kernel8bitNeonDotprod(const KernelParams8bit<8, 8>& params) {
         // Not all of the 8x8 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrb w7, [c3, w5, uxtw]\n"
+        "strb w7, [c4, w5, uxtw]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrb w7, [x3, w5, uxtw]\n"
         "strb w7, [x4, w5, uxtw]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #8\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #8\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 50b\n"
         "41:\n"
@@ -3987,41 +4800,89 @@ void Kernel8bitNeonDotprod(const KernelParams8bit<8, 8>& params) {
         "beq 130f\n"
         // Not all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, #8\n"
         "b 131f\n"
         "130:\n"
         // Yes, all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write directly to destination matrix.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, x11\n"
         "131:\n"
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v16.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v20.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v20)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v17.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v17)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v21.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v21)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v18.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v18)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v22.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v22)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v19.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v19)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v23.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v23)
 
         // For the next block: perform the first few multiply-adds on the data
@@ -4037,21 +4898,40 @@ void Kernel8bitNeonDotprod(const KernelParams8bit<8, 8>& params) {
         // Not all of the 8x8 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "150:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "151:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrb w7, [c3, w5, uxtw]\n"
+        "strb w7, [c4, w5, uxtw]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrb w7, [x3, w5, uxtw]\n"
         "strb w7, [x4, w5, uxtw]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 151b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #8\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #8\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 150b\n"
         "141:\n"
@@ -4159,41 +5039,89 @@ void Kernel8bitNeonDotprod(const KernelParams8bit<8, 8>& params) {
         "beq 230f\n"
         // Not all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, #16\n"
         "b 231f\n"
         "230:\n"
         // Yes, all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write directly to destination matrix.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, x11\n"
         "231:\n"
 
         // Write our 16bit values to the destination described by
         // (x3 address, x4 stride).
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v16.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v17.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v17)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v18.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v18)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v19.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v19)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v20.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v20)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v21.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v21)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v22.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v22)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v23.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v23)
 
         // For the next block: perform the first few multiply-adds on the data
@@ -4209,21 +5137,40 @@ void Kernel8bitNeonDotprod(const KernelParams8bit<8, 8>& params) {
         // Not all of the 8x8 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "250:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "251:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrsh w7, [c3, x5, lsl #1]\n"
+        "strh w7, [c4, x5, lsl #1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrsh w7, [x3, x5, lsl #1]\n"
         "strh w7, [x4, x5, lsl #1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 251b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #16\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #16\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 250b\n"
         "241:\n"
@@ -4260,6 +5207,41 @@ void Kernel8bitNeonDotprod(const KernelParams8bit<8, 8>& params) {
         "beq 330f\n"
         // Not all of the 8x8 block fits.
         // Write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "st1 {v16.4s}, [c3], #16\n"
+        RUY_MAKE_ZERO(v16)
+        "st1 {v17.4s}, [c3], #16\n"
+        RUY_MAKE_ZERO(v17)
+        "st1 {v18.4s}, [c3], #16\n"
+        RUY_MAKE_ZERO(v18)
+        "st1 {v19.4s}, [c3], #16\n"
+        RUY_MAKE_ZERO(v19)
+        "st1 {v20.4s}, [c3], #16\n"
+        RUY_MAKE_ZERO(v20)
+        "st1 {v21.4s}, [c3], #16\n"
+        RUY_MAKE_ZERO(v21)
+        "st1 {v22.4s}, [c3], #16\n"
+        RUY_MAKE_ZERO(v22)
+        "st1 {v23.4s}, [c3], #16\n"
+        RUY_MAKE_ZERO(v23)
+        "st1 {v24.4s}, [c3], #16\n"
+        RUY_MAKE_ZERO(v24)
+        "st1 {v25.4s}, [c3], #16\n"
+        RUY_MAKE_ZERO(v25)
+        "st1 {v26.4s}, [c3], #16\n"
+        RUY_MAKE_ZERO(v26)
+        "st1 {v27.4s}, [c3], #16\n"
+        RUY_MAKE_ZERO(v27)
+        "st1 {v28.4s}, [c3], #16\n"
+        RUY_MAKE_ZERO(v28)
+        "st1 {v29.4s}, [c3], #16\n"
+        RUY_MAKE_ZERO(v29)
+        "st1 {v30.4s}, [c3], #16\n"
+        RUY_MAKE_ZERO(v30)
+        "st1 {v31.4s}, [c3], #16\n"
+        RUY_MAKE_ZERO(v31)
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "st1 {v16.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v16)
@@ -4293,57 +5275,114 @@ void Kernel8bitNeonDotprod(const KernelParams8bit<8, 8>& params) {
         RUY_MAKE_ZERO(v30)
         "st1 {v31.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v31)
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         "b 331f\n"
 
         "330:\n"
         // Yes, all of the 8x8 block fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c4, %[dst_ptr]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.4s, v17.4s}, [c3], #32\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x4, %[dst_ptr]\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.4s, v17.4s}, [x3], #32\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c4, c4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v18.4s, v19.4s}, [c3], #32\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x4, x4, x11\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v18.4s, v19.4s}, [x3], #32\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v18)
         RUY_MAKE_ZERO(v19)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c4, c4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v20.4s, v21.4s}, [c3], #32\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x4, x4, x11\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v20.4s, v21.4s}, [x3], #32\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v20)
         RUY_MAKE_ZERO(v21)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c4, c4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v22.4s, v23.4s}, [c3], #32\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x4, x4, x11\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v22.4s, v23.4s}, [x3], #32\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v22)
         RUY_MAKE_ZERO(v23)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c4, c4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v24.4s, v25.4s}, [c3], #32\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x4, x4, x11\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v24.4s, v25.4s}, [x3], #32\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v24)
         RUY_MAKE_ZERO(v25)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c4, c4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v26.4s, v27.4s}, [c3], #32\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x4, x4, x11\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v26.4s, v27.4s}, [x3], #32\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v26)
         RUY_MAKE_ZERO(v27)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c4, c4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v28.4s, v29.4s}, [c3], #32\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x4, x4, x11\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v28.4s, v29.4s}, [x3], #32\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c4, c4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v30.4s, v31.4s}, [c3], #32\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x4, x4, x11\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v30.4s, v31.4s}, [x3], #32\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v30)
         RUY_MAKE_ZERO(v31)
 
@@ -4363,21 +5402,40 @@ void Kernel8bitNeonDotprod(const KernelParams8bit<8, 8>& params) {
         // Not all of the 8x8 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "350:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "351:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr w7, [c3, x5, lsl #2]\n"
+        "str w7, [c4, x5, lsl #2]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr w7, [x3, x5, lsl #2]\n"
         "str w7, [x4, x5, lsl #2]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 351b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #32\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #32\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 350b\n"
         "341:\n"
@@ -4617,7 +5675,11 @@ void Kernel8bitNeonDotprodX1(const KernelParams8bit<8, 8>& params) {
         "add %[lhs_col_ptr], %[lhs_col_ptr], x9, lsl #3\n"
         "b 5f\n"
         "4:\n"  // Finished last row...
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov %[lhs_col_ptr], c5\n"  // Go back to first row
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov %[lhs_col_ptr], x5\n"  // Go back to first row
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Now we need to advance to the next column. If we already
         // finished the last column, then in principle we are done, however
         // we can't just return here, as we need to allow the end work of the
@@ -4648,16 +5710,29 @@ void Kernel8bitNeonDotprodX1(const KernelParams8bit<8, 8>& params) {
         "csel w3, %w[row], %w[col], eq\n"
 
         // Offset the bias pointer as needed given the current row, col.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c5, c1, x3, lsl #2\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x5, x1, x3, lsl #2\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // If there is no bias, use no offset, just address the passed zero
         // data.
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_BIAS) "\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "csel c1, c1, c5, eq\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "csel x1, x1, x5, eq\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Load 8 bias values.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ld1 {v14.4s}, [c1], #16\n"
+        "ld1 {v15.4s}, [c1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ld1 {v14.4s}, [x1], #16\n"
         "ld1 {v15.4s}, [x1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Now that we know what LHS and RHS data the next iteration of the
         // main loop will need to load, we start loading the first 32 bytes of
@@ -4727,10 +5802,17 @@ void Kernel8bitNeonDotprodX1(const KernelParams8bit<8, 8>& params) {
 
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_RHS_SUMS) "\n"
         "beq 401f\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c3, [%[params], #" RUY_STR(RUY_OFFSET_RHS_SUMS) "]\n"
+        "add c3, c3, %x[col], lsl #2\n"
+        "ld1 {v14.4s}, [c3], #16\n"
+        "ld1 {v15.4s}, [c3]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x3, [%[params], #" RUY_STR(RUY_OFFSET_RHS_SUMS) "]\n"
         "add x3, x3, %x[col], lsl #2\n"
         "ld1 {v14.4s}, [x3], #16\n"
         "ld1 {v15.4s}, [x3]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ldr w5, [%[params], #" RUY_STR(RUY_OFFSET_LHS_ZERO_POINT) "]\n"
         "dup v10.4s, w5\n"  // create lhs_zero_point_vec
         // Subtract rhs_sums * lhs_zero_point, per
@@ -4755,12 +5837,22 @@ void Kernel8bitNeonDotprodX1(const KernelParams8bit<8, 8>& params) {
 
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_LHS_SUMS) "\n"
         "beq 402f\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c2, [%[params], #" RUY_STR(RUY_OFFSET_LHS_SUMS) "]\n"
+        "add c2, c2, %x[row], lsl #2\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x2, [%[params], #" RUY_STR(RUY_OFFSET_LHS_SUMS) "]\n"
         "add x2, x2, %x[row], lsl #2\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ldr w5, [%[params], #" RUY_STR(RUY_OFFSET_RHS_ZERO_POINT) "]\n"
         // Load 4 lhs_sums values.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ld1 {v11.4s}, [c2], #16\n"
+        "ld1 {v12.4s}, [c2]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ld1 {v11.4s}, [x2], #16\n"
         "ld1 {v12.4s}, [x2]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ins v13.s[1], w5\n" // rhs_zero_point
         // Compute lhs_sums * rhs_zero_point.
         "mul v11.4s, v11.4s, v13.s[1]\n"
@@ -4803,11 +5895,19 @@ void Kernel8bitNeonDotprodX1(const KernelParams8bit<8, 8>& params) {
         "csel w3, %w[row], %w[col], eq\n"
         // Compute the multiplier_exponent pointer
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_PERCHANNEL) "\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c5, c1, x3, lsl #2\n"
+        "csel c1, c1, c5, eq\n"
+        // Load multiplier_exponent
+        "ldr q9, [c1]\n"
+        "ldr q10, [c1, #16]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x5, x1, x3, lsl #2\n"
         "csel x1, x1, x5, eq\n"
         // Load multiplier_exponent
         "ldr q9, [x1]\n"
         "ldr q10, [x1, #16]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Separate positive and negative exponents
         "smin v11.4s, v8.4s, v9.4s\n"
         "smin v12.4s, v8.4s, v10.4s\n"
@@ -4815,12 +5915,21 @@ void Kernel8bitNeonDotprodX1(const KernelParams8bit<8, 8>& params) {
         "sub v10.4s, v10.4s, v12.4s\n"
 
         // Compute the multiplier_fixedpoint pointer
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c4, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_FIXEDPOINT) "]\n"
+        "add c5, c4, x3, lsl #2\n"
+        "csel c4, c4, c5, eq\n"
+        // Load multiplier_fixedpoint
+        "ldr q14, [c4]\n"
+        "ldr q15, [c4, #16]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x4, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_FIXEDPOINT) "]\n"
         "add x5, x4, x3, lsl #2\n"
         "csel x4, x4, x5, eq\n"
         // Load multiplier_fixedpoint
         "ldr q14, [x4]\n"
         "ldr q15, [x4, #16]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Jump based on channel dimension.
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_CHANNEL_DIMENSION_IS_COL) "\n"
@@ -5067,41 +6176,89 @@ void Kernel8bitNeonDotprodX1(const KernelParams8bit<8, 8>& params) {
         "beq 30f\n"
         // Not all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, #8\n"
         "b 31f\n"
         "30:\n"
         // Yes, all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write directly to destination matrix.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, x11\n"
         "31:\n"
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v16.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v20.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v20)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v17.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v17)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v21.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v21)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v18.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v18)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v22.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v22)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v19.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v19)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v23.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v23)
 
         // For the next block: perform the first few multiply-adds on the data
@@ -5117,21 +6274,40 @@ void Kernel8bitNeonDotprodX1(const KernelParams8bit<8, 8>& params) {
         // Not all of the 8x8 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrb w7, [c3, w5, uxtw]\n"
+        "strb w7, [c4, w5, uxtw]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrb w7, [x3, w5, uxtw]\n"
         "strb w7, [x4, w5, uxtw]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #8\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #8\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 50b\n"
         "41:\n"
@@ -5242,41 +6418,89 @@ void Kernel8bitNeonDotprodX1(const KernelParams8bit<8, 8>& params) {
         "beq 130f\n"
         // Not all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, #8\n"
         "b 131f\n"
         "130:\n"
         // Yes, all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write directly to destination matrix.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, x11\n"
         "131:\n"
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v16.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v20.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v20)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v17.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v17)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v21.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v21)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v18.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v18)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v22.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v22)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v19.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v19)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v23.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v23)
 
         // For the next block: perform the first few multiply-adds on the data
@@ -5292,21 +6516,40 @@ void Kernel8bitNeonDotprodX1(const KernelParams8bit<8, 8>& params) {
         // Not all of the 8x8 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "150:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "151:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrb w7, [c3, w5, uxtw]\n"
+        "strb w7, [c4, w5, uxtw]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrb w7, [x3, w5, uxtw]\n"
         "strb w7, [x4, w5, uxtw]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 151b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #8\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #8\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 150b\n"
         "141:\n"
@@ -5414,41 +6657,89 @@ void Kernel8bitNeonDotprodX1(const KernelParams8bit<8, 8>& params) {
         "beq 230f\n"
         // Not all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, #16\n"
         "b 231f\n"
         "230:\n"
         // Yes, all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write directly to destination matrix.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, x11\n"
         "231:\n"
 
         // Write our 16bit values to the destination described by
         // (x3 address, x4 stride).
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v16.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v17.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v17)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v18.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v18)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v19.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v19)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v20.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v20)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v21.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v21)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v22.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v22)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v23.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v23)
 
         // For the next block: perform the first few multiply-adds on the data
@@ -5464,21 +6755,40 @@ void Kernel8bitNeonDotprodX1(const KernelParams8bit<8, 8>& params) {
         // Not all of the 8x8 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "250:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "251:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrsh w7, [c3, x5, lsl #1]\n"
+        "strh w7, [c4, x5, lsl #1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrsh w7, [x3, x5, lsl #1]\n"
         "strh w7, [x4, x5, lsl #1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 251b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #16\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #16\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 250b\n"
         "241:\n"
@@ -5515,90 +6825,211 @@ void Kernel8bitNeonDotprodX1(const KernelParams8bit<8, 8>& params) {
         "beq 330f\n"
         // Not all of the 8x8 block fits.
         // Write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "st1 {v16.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "st1 {v16.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v17.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v17.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v17)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v18.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v18.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v18)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v19.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v19.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v19)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v20.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v20.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v20)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v21.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v21.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v21)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v22.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v22.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v22)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v23.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v23.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v23)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v24.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v24.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v24)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v25.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v25.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v25)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v26.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v26.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v26)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v27.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v27.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v27)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v28.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v28.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v28)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v29.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v29.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v29)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v30.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v30.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v30)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v31.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v31.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v31)
 
         "b 331f\n"
 
         "330:\n"
         // Yes, all of the 8x8 block fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c4, %[dst_ptr]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v16.4s, v17.4s}, [c3], #32\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x4, %[dst_ptr]\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.4s, v17.4s}, [x3], #32\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c4, c4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v18.4s, v19.4s}, [c3], #32\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x4, x4, x11\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v18.4s, v19.4s}, [x3], #32\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v18)
         RUY_MAKE_ZERO(v19)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c4, c4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v20.4s, v21.4s}, [c3], #32\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x4, x4, x11\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v20.4s, v21.4s}, [x3], #32\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v20)
         RUY_MAKE_ZERO(v21)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c4, c4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v22.4s, v23.4s}, [c3], #32\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x4, x4, x11\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v22.4s, v23.4s}, [x3], #32\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v22)
         RUY_MAKE_ZERO(v23)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c4, c4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v24.4s, v25.4s}, [c3], #32\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x4, x4, x11\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v24.4s, v25.4s}, [x3], #32\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v24)
         RUY_MAKE_ZERO(v25)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c4, c4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v26.4s, v27.4s}, [c3], #32\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x4, x4, x11\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v26.4s, v27.4s}, [x3], #32\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v26)
         RUY_MAKE_ZERO(v27)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c4, c4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v28.4s, v29.4s}, [c3], #32\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x4, x4, x11\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v28.4s, v29.4s}, [x3], #32\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c4, c4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "mov c3, c4\n"
+        "st1 {v30.4s, v31.4s}, [c3], #32\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x4, x4, x11\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v30.4s, v31.4s}, [x3], #32\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v30)
         RUY_MAKE_ZERO(v31)
 
@@ -5618,21 +7049,40 @@ void Kernel8bitNeonDotprodX1(const KernelParams8bit<8, 8>& params) {
         // Not all of the 8x8 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "350:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "351:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr w7, [c3, x5, lsl #2]\n"
+        "str w7, [c4, x5, lsl #2]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr w7, [x3, x5, lsl #2]\n"
         "str w7, [x4, x5, lsl #2]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 351b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #32\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #32\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 350b\n"
         "341:\n"
@@ -5834,7 +7284,11 @@ void Kernel8bitNeonDotprod1Col(const KernelParams8bit<8, 8>& params) {
         "add %[lhs_col_ptr], %[lhs_col_ptr], x9, lsl #3\n"
         "b 5f\n"
         "4:\n"  // Finished last row...
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov %[lhs_col_ptr], c5\n"  // Go back to first row
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov %[lhs_col_ptr], x5\n"  // Go back to first row
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Now we need to advance to the next column. If we already
         // finished the last column, then in principle we are done, however
         // we can't just return here, as we need to allow the end work of the
@@ -5872,8 +7326,13 @@ void Kernel8bitNeonDotprod1Col(const KernelParams8bit<8, 8>& params) {
         "csel x1, x1, x5, eq\n"
 
         // Load 8 bias values.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ld1 {v14.4s}, [c1], #16\n"
+        "ld1 {v15.4s}, [c1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ld1 {v14.4s}, [x1], #16\n"
         "ld1 {v15.4s}, [x1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Now that we know what LHS and RHS data the next iteration of the
         // main loop will need to load, we start loading the first 32 bytes of
@@ -5896,10 +7355,17 @@ void Kernel8bitNeonDotprod1Col(const KernelParams8bit<8, 8>& params) {
 
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_RHS_SUMS) "\n"
         "beq 401f\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c3, [%[params], #" RUY_STR(RUY_OFFSET_RHS_SUMS) "]\n"
+        "add c3, c3, %x[col], lsl #2\n"
+        "ld1 {v14.4s}, [c3], #16\n"
+        "ld1 {v15.4s}, [c3]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x3, [%[params], #" RUY_STR(RUY_OFFSET_RHS_SUMS) "]\n"
         "add x3, x3, %x[col], lsl #2\n"
         "ld1 {v14.4s}, [x3], #16\n"
         "ld1 {v15.4s}, [x3]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ldr w5, [%[params], #" RUY_STR(RUY_OFFSET_LHS_ZERO_POINT) "]\n"
         "dup v10.4s, w5\n"  // create lhs_zero_point_vec
         // Subtract rhs_sums * lhs_zero_point, per
@@ -5910,12 +7376,22 @@ void Kernel8bitNeonDotprod1Col(const KernelParams8bit<8, 8>& params) {
 
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_LHS_SUMS) "\n"
         "beq 402f\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c2, [%[params], #" RUY_STR(RUY_OFFSET_LHS_SUMS) "]\n"
+        "add c2, c2, %x[row], lsl #2\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x2, [%[params], #" RUY_STR(RUY_OFFSET_LHS_SUMS) "]\n"
         "add x2, x2, %x[row], lsl #2\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ldr w5, [%[params], #" RUY_STR(RUY_OFFSET_RHS_ZERO_POINT) "]\n"
         // Load 4 lhs_sums values.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ld1 {v11.4s}, [c2], #16\n"
+        "ld1 {v12.4s}, [c2]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ld1 {v11.4s}, [x2], #16\n"
         "ld1 {v12.4s}, [x2]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ins v13.s[1], w5\n" // rhs_zero_point
         // Compute lhs_sums * rhs_zero_point.
         "mul v11.4s, v11.4s, v13.s[1]\n"
@@ -5938,13 +7414,25 @@ void Kernel8bitNeonDotprod1Col(const KernelParams8bit<8, 8>& params) {
         // exponent component.
 
         //Load the exponent part of the multiplier.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c1, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_EXPONENT) "]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x1, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_EXPONENT) "]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_PERCHANNEL) "\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c5, c1, %x[row], lsl #2\n"
+        "csel c1, c1, c5, eq\n"
+
+        "ldr q9, [c1]\n"
+        "ldr q10, [c1, #16]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x5, x1, %x[row], lsl #2\n"
         "csel x1, x1, x5, eq\n"
 
         "ldr q9, [x1]\n"
         "ldr q10, [x1, #16]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         "smin v11.4s, v8.4s, v9.4s\n"
         "smin v12.4s, v8.4s, v10.4s\n"
@@ -5956,8 +7444,13 @@ void Kernel8bitNeonDotprod1Col(const KernelParams8bit<8, 8>& params) {
         "sshl v17.4s, v17.4s, v10.4s\n"
         "403:\n"
 
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr q14, [c4]\n" // multiplier_fixedpoint
+        "ldr q15, [c4, #16]\n" // multiplier_fixedpoint
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr q14, [x4]\n" // multiplier_fixedpoint
         "ldr q15, [x4, #16]\n" // multiplier_fixedpoint
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Apply the fixed-point part of the multiplier.
         "sqdmulh v16.4s, v16.4s, v14.4s\n"
@@ -6023,19 +7516,32 @@ void Kernel8bitNeonDotprod1Col(const KernelParams8bit<8, 8>& params) {
         "beq 30f\n"
         // Not all of the 8x1 block fits.
         // Set (x3 address, x4 stride) to write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, #8\n"
         "b 31f\n"
         "30:\n"
         // Yes, all of the 8x1 block fits.
         // Set (x3 address, x4 stride) to write directly to destination matrix.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, x11\n"
         "31:\n"
 
         // Write our 8bit values to the destination
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "st1 {v16.8b}, [c3]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "st1 {v16.8b}, [x3]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
 
@@ -6049,15 +7555,29 @@ void Kernel8bitNeonDotprod1Col(const KernelParams8bit<8, 8>& params) {
         // Not all of the 8x8 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrb w7, [c3, w5, uxtw]\n"
+        "strb w7, [c4, w5, uxtw]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrb w7, [x3, w5, uxtw]\n"
         "strb w7, [x4, w5, uxtw]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
@@ -6118,19 +7638,32 @@ void Kernel8bitNeonDotprod1Col(const KernelParams8bit<8, 8>& params) {
         "beq 130f\n"
         // Not all of the 8x1 block fits.
         // Set (x3 address, x4 stride) to write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, #8\n"
         "b 131f\n"
         "130:\n"
         // Yes, all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write directly to destination matrix.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, x11\n"
         "131:\n"
 
         // Write our 8bit values to the destination
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "st1 {v16.8b}, [c3]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "st1 {v16.8b}, [x3]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
 
@@ -6144,15 +7677,29 @@ void Kernel8bitNeonDotprod1Col(const KernelParams8bit<8, 8>& params) {
         // Not all of the 8x8 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "150:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "151:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrb w7, [c3, w5, uxtw]\n"
+        "strb w7, [c4, w5, uxtw]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrb w7, [x3, w5, uxtw]\n"
         "strb w7, [x4, w5, uxtw]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 151b\n"
@@ -6204,19 +7751,32 @@ void Kernel8bitNeonDotprod1Col(const KernelParams8bit<8, 8>& params) {
         "beq 230f\n"
         // Not all of the 8x1 block fits.
         // Set (x3 address, x4 stride) to write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, #16\n"
         "b 231f\n"
         "230:\n"
         // Yes, all of the 8x1 block fits.
         // Set (x3 address, x4 stride) to write directly to destination matrix.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, x11\n"
         "231:\n"
 
         // Write our 16bit values to the destination
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "st1 {v16.8h}, [c3]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "st1 {v16.8h}, [x3]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
 
@@ -6230,15 +7790,29 @@ void Kernel8bitNeonDotprod1Col(const KernelParams8bit<8, 8>& params) {
         // Not all of the 8x1 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "250:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "251:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrsh w7, [c3, x5, lsl #1]\n"
+        "strh w7, [c4, x5, lsl #1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrsh w7, [x3, x5, lsl #1]\n"
         "strh w7, [x4, x5, lsl #1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 251b\n"
@@ -6275,16 +7849,30 @@ void Kernel8bitNeonDotprod1Col(const KernelParams8bit<8, 8>& params) {
         "beq 330f\n"
         // Not all of the 8x1 block fits.
         // Set (x3 address, x4 stride) to write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, #16\n"
 
         // Write our 32bit values to the destination described by
         // (x3 address, x4 stride).
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v16.4s}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.4s}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v17.4s}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.4s}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v17)
 
         "b 331f\n"
@@ -6292,13 +7880,22 @@ void Kernel8bitNeonDotprod1Col(const KernelParams8bit<8, 8>& params) {
         "330:\n"
         // Yes, all of the 8x1 block fits.
         // Set (x3 address, x4 stride) to write directly to destination matrix.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x3, x4\n"
 
         // Write our 32bit values to the destination described by
         // (x3 address, x4 stride).
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v16.4s, v17.4s}, [c3], #32\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.4s, v17.4s}, [x3], #32\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
 
@@ -6315,15 +7912,29 @@ void Kernel8bitNeonDotprod1Col(const KernelParams8bit<8, 8>& params) {
         // Not all of the 8x8 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "350:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "351:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr w7, [c3, x5, lsl #2]\n"
+        "str w7, [c4, x5, lsl #2]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr w7, [x3, x5, lsl #2]\n"
         "str w7, [x4, x5, lsl #2]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 351b\n"
@@ -6481,9 +8092,15 @@ void Kernel8bitNeonDotprodA55ish(const KernelParams8bit<8, 8>& params) {
 
         "1:\n"
 
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c5, %[lhs_ptr], x12, lsl #3\n"
+        "sub c5, c5, #32\n"
+        "cmp %[lhs_ptr], c5\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x5, %[lhs_ptr], x12, lsl #3\n"
         "sub x5, x5, #32\n"
         "cmp %[lhs_ptr], x5\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         "beq 79f\n"
 
@@ -6508,7 +8125,11 @@ void Kernel8bitNeonDotprodA55ish(const KernelParams8bit<8, 8>& params) {
         ".word 0x4f83e039  // sdot v25.4s, v1.16b, v3.4b[0]\n"
         "ins v2.d[1], x3\n"
         ".word 0x4fa3e03b  // sdot v27.4s, v1.16b, v3.4b[1]\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "cmp %[lhs_ptr], c5\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "cmp %[lhs_ptr], x5\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         ".word 0x4f83e83d  // sdot v29.4s, v1.16b, v3.4b[2]\n"
         "add %[rhs_ptr], %[rhs_ptr], #32\n"
         ".word 0x4fa3e83f  // sdot v31.4s, v1.16b, v3.4b[3]\n"
@@ -6560,7 +8181,11 @@ void Kernel8bitNeonDotprodA55ish(const KernelParams8bit<8, 8>& params) {
         "add %[lhs_col_ptr], %[lhs_col_ptr], x9, lsl #3\n"
         "b 5f\n"
         "4:\n"  // Finished last row...
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov %[lhs_col_ptr], c5\n"  // Go back to first row
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov %[lhs_col_ptr], x5\n"  // Go back to first row
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Now we need to advance to the next column. If we already
         // finished the last column, then in principle we are done, however
         // we can't just return here, as we need to allow the end work of the
@@ -6598,11 +8223,21 @@ void Kernel8bitNeonDotprodA55ish(const KernelParams8bit<8, 8>& params) {
         "csel x1, x1, x5, eq\n"
 
         // Load 8 bias values.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ld1 {v14.2s}, [c1], #8\n"
+        "ldr x5, [c1], #8\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ld1 {v14.2s}, [x1], #8\n"
         "ldr x5, [x1], #8\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ins v14.d[1], x5\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ld1 {v15.2s}, [c1], #8\n"
+        "ldr x5, [c1], #8\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ld1 {v15.2s}, [x1], #8\n"
         "ldr x5, [x1], #8\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ins v15.d[1], x5\n"
 
         // Add to the bias values the product (depth * lhs_zero_point * rhs_zero_point),
@@ -6668,11 +8303,25 @@ void Kernel8bitNeonDotprodA55ish(const KernelParams8bit<8, 8>& params) {
         "ldr x5, [%[params], #" RUY_STR(RUY_OFFSET_RHS_SUMS) "]\n"
         "add x5, x5, %x[col], lsl #2\n"
         // Load 8 rhs_sums values.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ld1 {v14.2s}, [c5], #8\n"
+        "ldr x7, [c5], #8\n"
+        "ld1 {v14.2s}, [c5], #8\n"
+        "ldr x7, [c5], #8\n"
+        "ld1 {v15.2s}, [c5], #8\n"
+#else   // !__CHERI_PURE_CAPABILITY__
+        "ld1 {v14.2s}, [x5], #8\n"
+        "ldr x7, [x5], #8\n"
         "ld1 {v14.2s}, [x5], #8\n"
         "ldr x7, [x5], #8\n"
         "ld1 {v15.2s}, [x5], #8\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ins v14.d[1], x7\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr x7, [c5], #8\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x7, [x5], #8\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ins v15.d[1], x7\n"
         // Subtract rhs_sums * lhs_zero_point, per
         // equation (7) in https://arxiv.org/pdf/1712.05877.pdf
@@ -6701,11 +8350,21 @@ void Kernel8bitNeonDotprodA55ish(const KernelParams8bit<8, 8>& params) {
         "ldr w5, [%[params], #" RUY_STR(RUY_OFFSET_RHS_ZERO_POINT) "]\n"
         "ins v13.s[1], w5\n" // rhs_zero_point
         // Load 8 lhs_sums values.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ld1 {v11.2s}, [c2], #8\n"
+        "ldr x4, [c2], #8\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ld1 {v11.2s}, [x2], #8\n"
         "ldr x4, [x2], #8\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ins v11.d[1], x4\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ld1 {v12.2s}, [c2], #8\n"
+        "ldr x4, [c2], #8\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ld1 {v12.2s}, [x2], #8\n"
         "ldr x4, [x2], #8\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "ins v12.d[1], x4\n"
         // Compute lhs_sums * rhs_zero_point.
         "mul v11.4s, v11.4s, v13.s[1]\n"
@@ -6749,8 +8408,13 @@ void Kernel8bitNeonDotprodA55ish(const KernelParams8bit<8, 8>& params) {
         "add x5, x1, x3, lsl #2\n"
         "csel x1, x1, x5, eq\n"
         // Load multiplier_exponent
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr q9, [c1]\n"
+        "ldr q10, [c1, #16]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr q9, [x1]\n"
         "ldr q10, [x1, #16]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Separate positive and negative exponents
         "smin v11.4s, v8.4s, v9.4s\n"
         "smin v12.4s, v8.4s, v10.4s\n"
@@ -6758,12 +8422,21 @@ void Kernel8bitNeonDotprodA55ish(const KernelParams8bit<8, 8>& params) {
         "sub v10.4s, v10.4s, v12.4s\n"
 
         // Compute the multiplier_fixedpoint pointer
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c4, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_FIXEDPOINT) "]\n"
+        "add c5, c4, x3, lsl #2\n"
+        "csel c4, c4, c5, eq\n"
+        // Load multiplier_fixedpoint
+        "ldr q14, [c4]\n"
+        "ldr q15, [c4, #16]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x4, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_FIXEDPOINT) "]\n"
         "add x5, x4, x3, lsl #2\n"
         "csel x4, x4, x5, eq\n"
         // Load multiplier_fixedpoint
         "ldr q14, [x4]\n"
         "ldr q15, [x4, #16]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Jump based on channel dimension.
         "tst w6, #" RUY_STR(RUY_ASM_FLAG_CHANNEL_DIMENSION_IS_COL) "\n"
@@ -7046,47 +8719,95 @@ void Kernel8bitNeonDotprodA55ish(const KernelParams8bit<8, 8>& params) {
         "beq 30f\n"
         // Not all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, #8\n"
         "b 31f\n"
         "30:\n"
         // Yes, all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write directly to destination matrix.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, x11\n"
         "31:\n"
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v16.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v20.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v20)
         // For the next block: perform the first few multiply-adds on the data
         // that we have already loaded.
         ".word 0x4f82e010  // sdot v16.4s, v0.16b, v2.4b[0]\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v17.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v17)
         ".word 0x4f82e814  // sdot v20.4s, v0.16b, v2.4b[2]\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v21.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v21)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v18.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v18)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v22.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v22)
         ".word 0x4fa2e012  // sdot v18.4s, v0.16b, v2.4b[1]\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v19.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v19)
         ".word 0x4fa2e816  // sdot v22.4s, v0.16b, v2.4b[3]\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v23.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v23)
 
         // If all of the 8x8 block fits, we just finished writing it to the
@@ -7095,21 +8816,40 @@ void Kernel8bitNeonDotprodA55ish(const KernelParams8bit<8, 8>& params) {
         // Not all of the 8x8 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrb w7, [c3, w5, uxtw]\n"
+        "strb w7, [c4, w5, uxtw]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrb w7, [x3, w5, uxtw]\n"
         "strb w7, [x4, w5, uxtw]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #8\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #8\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 50b\n"
         "41:\n"
@@ -7220,47 +8960,95 @@ void Kernel8bitNeonDotprodA55ish(const KernelParams8bit<8, 8>& params) {
         "beq 130f\n"
         // Not all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, #8\n"
         "b 131f\n"
         "130:\n"
         // Yes, all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write directly to destination matrix.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, x11\n"
         "131:\n"
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v16.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v20.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v20)
         // For the next block: perform the first few multiply-adds on the data
         // that we have already loaded.
         ".word 0x4f82e010  // sdot v16.4s, v0.16b, v2.4b[0]\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v17.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v17)
         ".word 0x4f82e814  // sdot v20.4s, v0.16b, v2.4b[2]\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v21.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v21)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v18.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v18)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v22.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v22)
         ".word 0x4fa2e012  // sdot v18.4s, v0.16b, v2.4b[1]\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v19.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v19)
         ".word 0x4fa2e816  // sdot v22.4s, v0.16b, v2.4b[3]\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v23.8b}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8b}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v23)
 
         // If all of the 8x8 block fits, we just finished writing it to the
@@ -7269,21 +9057,40 @@ void Kernel8bitNeonDotprodA55ish(const KernelParams8bit<8, 8>& params) {
         // Not all of the 8x8 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "150:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "151:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrb w7, [c3, w5, uxtw]\n"
+        "strb w7, [c4, w5, uxtw]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrb w7, [x3, w5, uxtw]\n"
         "strb w7, [x4, w5, uxtw]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 151b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #8\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #8\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 150b\n"
         "141:\n"
@@ -7392,41 +9199,89 @@ void Kernel8bitNeonDotprodA55ish(const KernelParams8bit<8, 8>& params) {
         "beq 230f\n"
         // Not all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, #16\n"
         "b 231f\n"
         "230:\n"
         // Yes, all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write directly to destination matrix.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, x11\n"
         "231:\n"
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v16.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v17.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v17)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v18.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v18)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v19.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v19)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v20.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v20)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v21.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v21)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v22.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v22)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "st1 {v23.8h}, [c3], x4\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8h}, [x3], x4\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v23)
 
         // For the next block: perform the first few multiply-adds on the data
@@ -7442,21 +9297,40 @@ void Kernel8bitNeonDotprodA55ish(const KernelParams8bit<8, 8>& params) {
         // Not all of the 8x8 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "250:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "251:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldrsh w7, [c3, x5, lsl #1]\n"
+        "strh w7, [c4, x5, lsl #1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldrsh w7, [x3, x5, lsl #1]\n"
         "strh w7, [x4, x5, lsl #1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 251b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #16\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #16\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 250b\n"
         "241:\n"
@@ -7506,75 +9380,181 @@ void Kernel8bitNeonDotprodA55ish(const KernelParams8bit<8, 8>& params) {
         "beq 330f\n"
         // Not all of the 8x8 block fits.
         // Write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "st1 {v16.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "st1 {v16.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v17.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v17.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v17)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v18.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v18.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v18)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v19.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v19.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v19)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v20.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v20.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v20)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v21.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v21.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v21)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v22.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v22.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v22)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v23.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v23.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v23)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v24.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v24.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v24)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v25.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v25.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v25)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v26.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v26.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v26)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v27.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v27.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v27)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v28.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v28.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v28)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v29.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v29.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v29)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v30.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v30.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v30)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "st1 {v31.4s}, [c3], #16\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "st1 {v31.4s}, [x3], #16\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v31)
 
         "b 331f\n"
 
         "330:\n"
         // Yes, all of the 8x8 block fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c4, %[dst_ptr]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "st1 {v16.4s, v17.4s}, [c4], x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x4, %[dst_ptr]\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "st1 {v16.4s, v17.4s}, [x4], x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "st1 {v18.4s, v19.4s}, [c4], x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "st1 {v18.4s, v19.4s}, [x4], x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v18)
         RUY_MAKE_ZERO(v19)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "st1 {v20.4s, v21.4s}, [c4], x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "st1 {v20.4s, v21.4s}, [x4], x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v20)
         RUY_MAKE_ZERO(v21)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "st1 {v22.4s, v23.4s}, [c4], x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "st1 {v22.4s, v23.4s}, [x4], x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v22)
         RUY_MAKE_ZERO(v23)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "st1 {v24.4s, v25.4s}, [c4], x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "st1 {v24.4s, v25.4s}, [x4], x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v24)
         RUY_MAKE_ZERO(v25)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "st1 {v26.4s, v27.4s}, [c4], x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "st1 {v26.4s, v27.4s}, [x4], x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v26)
         RUY_MAKE_ZERO(v27)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "st1 {v28.4s, v29.4s}, [c4], x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "st1 {v28.4s, v29.4s}, [x4], x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+        "st1 {v30.4s, v31.4s}, [c4], x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "st1 {v30.4s, v31.4s}, [x4], x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v30)
         RUY_MAKE_ZERO(v31)
 
@@ -7594,21 +9574,47 @@ void Kernel8bitNeonDotprodA55ish(const KernelParams8bit<8, 8>& params) {
         // Not all of the 8x8 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "350:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "mov w6, #0\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
+        "350:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "351:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr w7, [c3, x5, lsl #2]\n"
+        "str w7, [c4, x5, lsl #2]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr w7, [x3, x5, lsl #2]\n"
         "str w7, [x4, x5, lsl #2]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 351b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #32\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #32\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 350b\n"
         "341:\n"
@@ -8080,7 +10086,11 @@ void KernelFloatNeon(const KernelParamsFloat<8, 8>& params) {
         "add %[lhs_col_ptr], %[lhs_col_ptr], x9, lsl #3\n"
         "b 5f\n"
         "4:\n"  // Finished last row...
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov %[lhs_col_ptr], c5\n"  // Go back to first row
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov %[lhs_col_ptr], x5\n"  // Go back to first row
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Now we need to advance to the next column. If we already
         // finished the last column, then in principle we are done, however
         // we can't just return here, as we need to allow the end work of the
@@ -8101,23 +10111,39 @@ void KernelFloatNeon(const KernelParamsFloat<8, 8>& params) {
 
         // Load some parameters needed for the end work on current block.
         "ldrb w4, [%[params], #" RUY_STR(RUY_OFFSET_FLAGS) "]\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c1, [%[params], #" RUY_STR(RUY_OFFSET_BIAS) "]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x1, [%[params], #" RUY_STR(RUY_OFFSET_BIAS) "]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Determine the channel index.
         "tst w4, #" RUY_STR(RUY_ASM_FLAG_CHANNEL_DIMENSION_IS_COL) "\n"
         "csel w3, %w[row], %w[col], eq\n"
 
         // Offset the bias pointer as needed given the current row, col.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c5, c1, x3, lsl #2\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x5, x1, x3, lsl #2\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // If there is no bias, use no offset, just address the passed zero
         // data.
         "tst w4, #" RUY_STR(RUY_ASM_FLAG_HAS_BIAS) "\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "csel c1, c1, c5, eq\n"
+
+        // Load 8 bias values.
+        "ld1 {v14.4s}, [c1], #16\n"
+        "ld1 {v15.4s}, [c1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "csel x1, x1, x5, eq\n"
 
         // Load 8 bias values.
         "ld1 {v14.4s}, [x1], #16\n"
         "ld1 {v15.4s}, [x1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Now that we know what LHS and RHS data the next iteration of the
         // main loop will need to load, we start loading the first 32 bytes of
@@ -8243,63 +10269,126 @@ void KernelFloatNeon(const KernelParamsFloat<8, 8>& params) {
         "beq 30f\n"
         // Not all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, #32\n"
         "b 31f\n"
         "30:\n"
         // Yes, all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write directly to destination matrix.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, x11\n"
         "31:\n"
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "str q16, [c3, #0]\n"
+        "str q17, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "str q16, [x3, #0]\n"
         "str q17, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q18, [c3, #0]\n"
+        "str q19, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q18, [x3, #0]\n"
         "str q19, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v18)
         RUY_MAKE_ZERO(v19)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q20, [c3, #0]\n"
+        "str q21, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q20, [x3, #0]\n"
         "str q21, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v20)
         RUY_MAKE_ZERO(v21)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q22, [c3, #0]\n"
+        "str q23, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q22, [x3, #0]\n"
         "str q23, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v22)
         RUY_MAKE_ZERO(v23)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q24, [c3, #0]\n"
+        "str q25, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q24, [x3, #0]\n"
         "str q25, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v24)
         RUY_MAKE_ZERO(v25)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q26, [c3, #0]\n"
+        "str q27, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q26, [x3, #0]\n"
         "str q27, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v26)
         RUY_MAKE_ZERO(v27)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q28, [c3, #0]\n"
+        "str q29, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q28, [x3, #0]\n"
         "str q29, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q30, [c3, #0]\n"
+        "str q31, [c3, #16]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q30, [x3, #0]\n"
         "str q31, [x3, #16]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v30)
         RUY_MAKE_ZERO(v31)
 
@@ -8309,21 +10398,40 @@ void KernelFloatNeon(const KernelParamsFloat<8, 8>& params) {
         // Not all of the 8x8 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr w7, [c3, x5, lsl #2]\n"
+        "str w7, [c4, x5, lsl #2]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr w7, [x3, x5, lsl #2]\n"
         "str w7, [x4, x5, lsl #2]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #32\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #32\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 50b\n"
         "41:\n"
@@ -8546,7 +10654,11 @@ void KernelFloatNeonX1(const KernelParamsFloat<8, 8>& params) {
         "add %[lhs_col_ptr], %[lhs_col_ptr], x9, lsl #3\n"
         "b 5f\n"
         "4:\n"  // Finished last row...
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov %[lhs_col_ptr], c5\n"  // Go back to first row
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov %[lhs_col_ptr], x5\n"  // Go back to first row
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Now we need to advance to the next column. If we already
         // finished the last column, then in principle we are done, however
         // we can't just return here, as we need to allow the end work of the
@@ -8567,23 +10679,39 @@ void KernelFloatNeonX1(const KernelParamsFloat<8, 8>& params) {
 
         // Load some parameters needed for the end work on current block.
         "ldrb w4, [%[params], #" RUY_STR(RUY_OFFSET_FLAGS) "]\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c1, [%[params], #" RUY_STR(RUY_OFFSET_BIAS) "]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x1, [%[params], #" RUY_STR(RUY_OFFSET_BIAS) "]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Determine the channel index.
         "tst w4, #" RUY_STR(RUY_ASM_FLAG_CHANNEL_DIMENSION_IS_COL) "\n"
         "csel w3, %w[row], %w[col], eq\n"
 
         // Offset the bias pointer as needed given the current row, col.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c5, c1, x3, lsl #2\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x5, x1, x3, lsl #2\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // If there is no bias, use no offset, just address the passed zero
         // data.
         "tst w4, #" RUY_STR(RUY_ASM_FLAG_HAS_BIAS) "\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "csel c1, c1, c5, eq\n"
+
+        // Load 8 bias values.
+        "ld1 {v14.4s}, [c1], #16\n"
+        "ld1 {v15.4s}, [c1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "csel x1, x1, x5, eq\n"
 
         // Load 8 bias values.
         "ld1 {v14.4s}, [x1], #16\n"
         "ld1 {v15.4s}, [x1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Now that we know what LHS and RHS data the next iteration of the
         // main loop will need to load, we start loading the first 32 bytes of
@@ -8709,63 +10837,126 @@ void KernelFloatNeonX1(const KernelParamsFloat<8, 8>& params) {
         "beq 30f\n"
         // Not all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, #32\n"
         "b 31f\n"
         "30:\n"
         // Yes, all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write directly to destination matrix.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, x11\n"
         "31:\n"
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "str q16, [c3, #0]\n"
+        "str q17, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "str q16, [x3, #0]\n"
         "str q17, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q18, [c3, #0]\n"
+        "str q19, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q18, [x3, #0]\n"
         "str q19, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v18)
         RUY_MAKE_ZERO(v19)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q20, [c3, #0]\n"
+        "str q21, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q20, [x3, #0]\n"
         "str q21, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v20)
         RUY_MAKE_ZERO(v21)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q22, [c3, #0]\n"
+        "str q23, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q22, [x3, #0]\n"
         "str q23, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v22)
         RUY_MAKE_ZERO(v23)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q24, [c3, #0]\n"
+        "str q25, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q24, [x3, #0]\n"
         "str q25, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v24)
         RUY_MAKE_ZERO(v25)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q26, [c3, #0]\n"
+        "str q27, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q26, [x3, #0]\n"
         "str q27, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v26)
         RUY_MAKE_ZERO(v27)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q28, [c3, #0]\n"
+        "str q29, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q28, [x3, #0]\n"
         "str q29, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q30, [c3, #0]\n"
+        "str q31, [c3, #16]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q30, [x3, #0]\n"
         "str q31, [x3, #16]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v30)
         RUY_MAKE_ZERO(v31)
 
@@ -8775,21 +10966,40 @@ void KernelFloatNeonX1(const KernelParamsFloat<8, 8>& params) {
         // Not all of the 8x8 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr w7, [c3, x5, lsl #2]\n"
+        "str w7, [c4, x5, lsl #2]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr w7, [x3, x5, lsl #2]\n"
         "str w7, [x4, x5, lsl #2]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #32\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #32\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 50b\n"
         "41:\n"
@@ -9038,7 +11248,11 @@ void KernelFloatNeonA55ish(const KernelParamsFloat<8, 8>& params) {
         "add %[lhs_col_ptr], %[lhs_col_ptr], x9, lsl #3\n"
         "b 5f\n"
         "4:\n"  // Finished last row...
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov %[lhs_col_ptr], c5\n"  // Go back to first row
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov %[lhs_col_ptr], x5\n"  // Go back to first row
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Now we need to advance to the next column. If we already
         // finished the last column, then in principle we are done, however
         // we can't just return here, as we need to allow the end work of the
@@ -9059,24 +11273,40 @@ void KernelFloatNeonA55ish(const KernelParamsFloat<8, 8>& params) {
 
         // Load some parameters needed for the end work on current block.
         "ldrb w4, [%[params], #" RUY_STR(RUY_OFFSET_FLAGS) "]\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr c1, [%[params], #" RUY_STR(RUY_OFFSET_BIAS) "]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr x1, [%[params], #" RUY_STR(RUY_OFFSET_BIAS) "]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Determine the channel index.
         "tst w4, #" RUY_STR(RUY_ASM_FLAG_CHANNEL_DIMENSION_IS_COL) "\n"
         "csel w3, %w[row], %w[col], eq\n"
 
         // Offset the bias pointer as needed given the current row, col.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c5, c1, x3, lsl #2\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x5, x1, x3, lsl #2\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // If there is no bias, use no offset, just address the passed zero
         // data.
 
         "tst w4, #" RUY_STR(RUY_ASM_FLAG_HAS_BIAS) "\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "csel c1, c1, c5, eq\n"
+
+        // Load 8 bias values.
+        "ld1 {v14.4s}, [c1], #16\n"
+        "ld1 {v15.4s}, [c1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "csel x1, x1, x5, eq\n"
 
         // Load 8 bias values.
         "ld1 {v14.4s}, [x1], #16\n"
         "ld1 {v15.4s}, [x1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Now that we know what LHS and RHS data the next iteration of the
         // main loop will need to load, we start loading the first 32 bytes of
@@ -9202,63 +11432,126 @@ void KernelFloatNeonA55ish(const KernelParamsFloat<8, 8>& params) {
         "beq 30f\n"
         // Not all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, #32\n"
         "b 31f\n"
         "30:\n"
         // Yes, all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write directly to destination matrix.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, x11\n"
         "31:\n"
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "str q16, [c3, #0]\n"
+        "str q17, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "str q16, [x3, #0]\n"
         "str q17, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q18, [c3, #0]\n"
+        "str q19, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q18, [x3, #0]\n"
         "str q19, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v18)
         RUY_MAKE_ZERO(v19)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q20, [c3, #0]\n"
+        "str q21, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q20, [x3, #0]\n"
         "str q21, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v20)
         RUY_MAKE_ZERO(v21)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q22, [c3, #0]\n"
+        "str q23, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q22, [x3, #0]\n"
         "str q23, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v22)
         RUY_MAKE_ZERO(v23)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q24, [c3, #0]\n"
+        "str q25, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q24, [x3, #0]\n"
         "str q25, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v24)
         RUY_MAKE_ZERO(v25)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q26, [c3, #0]\n"
+        "str q27, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q26, [x3, #0]\n"
         "str q27, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v26)
         RUY_MAKE_ZERO(v27)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q28, [c3, #0]\n"
+        "str q29, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q28, [x3, #0]\n"
         "str q29, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q30, [c3, #0]\n"
+        "str q31, [c3, #16]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q30, [x3, #0]\n"
         "str q31, [x3, #16]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v30)
         RUY_MAKE_ZERO(v31)
 
@@ -9268,21 +11561,40 @@ void KernelFloatNeonA55ish(const KernelParamsFloat<8, 8>& params) {
         // Not all of the 8x8 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr w7, [c3, x5, lsl #2]\n"
+        "str w7, [c4, x5, lsl #2]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr w7, [x3, x5, lsl #2]\n"
         "str w7, [x4, x5, lsl #2]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #32\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #32\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 50b\n"
         "41:\n"
@@ -9531,7 +11843,11 @@ void KernelFloatNeonDotprodA55ish(const KernelParamsFloat<8, 8>& params) {
         "add %[lhs_col_ptr], %[lhs_col_ptr], x9, lsl #3\n"
         "b 5f\n"
         "4:\n"  // Finished last row...
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov %[lhs_col_ptr], c5\n"  // Go back to first row
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov %[lhs_col_ptr], x5\n"  // Go back to first row
+#endif  // !__CHERI_PURE_CAPABILITY__
         // Now we need to advance to the next column. If we already
         // finished the last column, then in principle we are done, however
         // we can't just return here, as we need to allow the end work of the
@@ -9559,17 +11875,30 @@ void KernelFloatNeonDotprodA55ish(const KernelParamsFloat<8, 8>& params) {
         "csel w3, %w[row], %w[col], eq\n"
 
         // Offset the bias pointer as needed given the current row, col.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c5, c1, x3, lsl #2\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x5, x1, x3, lsl #2\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // If there is no bias, use no offset, just address the passed zero
         // data.
 
         "tst w4, #" RUY_STR(RUY_ASM_FLAG_HAS_BIAS) "\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "csel c1, c1, c5, eq\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "csel x1, x1, x5, eq\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Load 8 bias values.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ld1 {v14.4s}, [c1], #16\n"
+        "ld1 {v15.4s}, [c1]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ld1 {v14.4s}, [x1], #16\n"
         "ld1 {v15.4s}, [x1]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
 
         // Now that we know what LHS and RHS data the next iteration of the
         // main loop will need to load, we start loading the first 32 bytes of
@@ -9695,63 +12024,126 @@ void KernelFloatNeonDotprodA55ish(const KernelParamsFloat<8, 8>& params) {
         "beq 30f\n"
         // Not all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write to dst_tmp_buf
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, #32\n"
         "b 31f\n"
         "30:\n"
         // Yes, all of the 8x8 block fits.
         // Set (x3 address, x4 stride) to write directly to destination matrix.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov x4, x11\n"
         "31:\n"
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+        "str q16, [c3, #0]\n"
+        "str q17, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "str q16, [x3, #0]\n"
         "str q17, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q18, [c3, #0]\n"
+        "str q19, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q18, [x3, #0]\n"
         "str q19, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v18)
         RUY_MAKE_ZERO(v19)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q20, [c3, #0]\n"
+        "str q21, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q20, [x3, #0]\n"
         "str q21, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v20)
         RUY_MAKE_ZERO(v21)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q22, [c3, #0]\n"
+        "str q23, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q22, [x3, #0]\n"
         "str q23, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v22)
         RUY_MAKE_ZERO(v23)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q24, [c3, #0]\n"
+        "str q25, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q24, [x3, #0]\n"
         "str q25, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v24)
         RUY_MAKE_ZERO(v25)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q26, [c3, #0]\n"
+        "str q27, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q26, [x3, #0]\n"
         "str q27, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v26)
         RUY_MAKE_ZERO(v27)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q28, [c3, #0]\n"
+        "str q29, [c3, #16]\n"
+        "add c3, c3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c3]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q28, [x3, #0]\n"
         "str q29, [x3, #16]\n"
         "add x3, x3, x4\n"
         RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "str q30, [c3, #0]\n"
+        "str q31, [c3, #16]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "str q30, [x3, #0]\n"
         "str q31, [x3, #16]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         RUY_MAKE_ZERO(v30)
         RUY_MAKE_ZERO(v31)
 
@@ -9761,21 +12153,40 @@ void KernelFloatNeonDotprodA55ish(const KernelParamsFloat<8, 8>& params) {
         // Not all of the 8x8 block fits in the destination matrix.  We just
         // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
         // it to copy into the destination matrix the part that fits.
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "mov c3, %[dst_tmp_buf]\n"
+        "mov c4, %[dst_ptr]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "mov x3, %[dst_tmp_buf]\n"
         "mov x4, %[dst_ptr]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w6, #0\n"
         "50:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [c4]\n")
+#else   // !__CHERI_PURE_CAPABILITY__
         RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+#endif  // !__CHERI_PURE_CAPABILITY__
         "mov w5, #0\n"
         "51:\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "ldr w7, [c3, x5, lsl #2]\n"
+        "str w7, [c4, x5, lsl #2]\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "ldr w7, [x3, x5, lsl #2]\n"
         "str w7, [x4, x5, lsl #2]\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "add w5, w5, #1\n"
         "cmp w5, w1\n"
         "blt 51b\n"
         "add w6, w6, #1\n"
+#if defined(__CHERI_PURE_CAPABILITY__)
+        "add c3, c3, #32\n"
+        "add c4, c4, x11\n"
+#else   // !__CHERI_PURE_CAPABILITY__
         "add x3, x3, #32\n"
         "add x4, x4, x11\n"
+#endif  // !__CHERI_PURE_CAPABILITY__
         "cmp w6, w2\n"
         "blt 50b\n"
         "41:\n"
